@@ -1,0 +1,221 @@
+---
+// src/pages/[slug].astro
+import Layout from '../layouts/Layout.astro';
+import EmbedSocial from '../components/EmbedSocial.astro';
+
+// 1. GENERACIÓN DE RUTAS DINÁMICAS
+export async function getStaticPaths() {
+  try {
+    const response = await fetch(import.meta.env.WORDPRESS_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `
+          query GetAllSlugs {
+            posts(first: 100) { # Limitamos a las últimas 100 notas estáticas
+              nodes {
+                slug
+              }
+            }
+          }
+        `
+      })
+    });
+
+    const json = await response.json();
+    const posts = json.data?.posts?.nodes || [];
+
+    return posts.map((post: any) => ({
+      params: { slug: post.slug }
+    }));
+  } catch (error) {
+    console.error("Error generando rutas estáticas:", error);
+    return [];
+  }
+}
+
+// PREPARACIÓN PARA EL FUTURO (ISR / MODO HÍBRIDO):
+// Al configurar fallback en 'blocking', si una nota vieja no se compiló en el SSG inicial,
+// el servidor de Vercel la buscará en tiempo real en WordPress la primera vez que la visiten,
+// y luego la guardará en caché estática. (En SSG puro esto es ignorado).
+export const fallback = 'blocking';
+
+// 2. CAPTURA DEL CONTENIDO DEL POST ACTUAL
+const { slug } = Astro.params;
+let postData = null;
+
+try {
+  const response = await fetch(import.meta.env.WORDPRESS_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: `
+        query GetPostBySlug($slug: String!) {
+          postBy(slug: $slug) {
+            title
+            content
+            date
+            featuredImage {
+              node {
+                sourceUrl
+              }
+            }
+            camposMultimedia {
+              urlVideoTiktok
+              urlVideoYoutube
+              urlVideoInstagram
+            }
+            actorsSociales {
+              nodes {
+                name
+              }
+            }
+          }
+        }
+      `,
+      variables: { slug }
+    })
+  });
+
+  const json = await response.json();
+  postData = json.data?.postBy;
+} catch (error) {
+  console.error("Error cargando el post individual:", error);
+}
+
+if (!postData) {
+  return Astro.redirect('/404');
+}
+
+const multimedia = (postData as any).camposMultimedia || {};
+
+const rawYoutube = (multimedia.urlVideoYoutube || '').trim();
+const rawTiktok = (multimedia.urlVideoTiktok || '').trim();
+const rawInstagram = (multimedia.urlVideoInstagram || '').trim();
+
+let finalYoutubeUrl = '';
+let finalTiktokUrl = '';
+let finalInstagramUrl = '';
+
+[rawYoutube, rawTiktok, rawInstagram].forEach(url => {
+  if (!url) return;
+  
+  if (url.includes('youtube.com') || url.includes('youtu.be') || url.length === 11) {
+    finalYoutubeUrl = url;
+  } 
+  else if (url.includes('tiktok.com')) {
+    finalTiktokUrl = url;
+  } 
+  else if (url.includes('instagram.com')) {
+    finalInstagramUrl = url;
+  }
+});
+
+const post = {
+  title: postData.title,
+  content: postData.content,
+  date: postData.date,
+  featuredImage: postData.featuredImage?.node?.sourceUrl || 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=1200',
+  videoYoutube: finalYoutubeUrl,
+  videoTiktok: finalTiktokUrl,
+  videoInstagram: finalInstagramUrl,
+  actoresSociales: postData.actorsSociales?.nodes?.map((node: any) => node.name) || []
+};
+
+function getYoutubeEmbedUrl(url: string) {
+  if (!url) return '';
+  const cleanUrl = url.trim();
+  let videoId = '';
+
+  if (cleanUrl.includes('youtu.be/')) {
+    videoId = cleanUrl.split('youtu.be/')[1]?.split('?')[0]?.split('/')[0];
+  } else if (cleanUrl.includes('watch?v=')) {
+    videoId = cleanUrl.split('watch?v=')[1]?.split('&')[0];
+  } else if (cleanUrl.includes('embed/')) {
+    videoId = cleanUrl.split('embed/')[1]?.split('?')[0];
+  } else if (cleanUrl.includes('shorts/')) {
+    videoId = cleanUrl.split('shorts/')[1]?.split('?')[0]?.split('/')[0];
+  } else if (cleanUrl.length === 11) {
+    videoId = cleanUrl;
+  }
+
+  return videoId ? `https://www.youtube.com/embed/${videoId}` : '';
+}
+
+const youtubeEmbedUrl = getYoutubeEmbedUrl(post.videoYoutube);
+const hasSecondaryMultimedia = post.videoTiktok || post.videoInstagram;
+---
+
+<Layout title={`${post.title} - Realidades`}>
+  <main class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <article>
+      <header class="mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-900 mb-4">{post.title}</h1>
+        
+        <div class="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-4">
+          <time class="font-medium">{new Date(post.date).toLocaleDateString('es-PE', { day: 'numeric', month: 'long', year: 'numeric' })}</time>
+        </div>
+
+        {post.actoresSociales.length > 0 && (
+          <div class="flex flex-wrap gap-2 items-center mt-2">
+            <span class="text-xs font-semibold uppercase tracking-wider text-gray-400">Actores Sociales:</span>
+            {post.actoresSociales.map((actor: string) => (
+              <span class="bg-blue-50 text-blue-700 text-xs font-semibold px-3 py-1 rounded-full border border-blue-100 shadow-sm">
+                {actor}
+              </span>
+            ))}
+          </div>
+        )}
+      </header>
+
+      <div class="mb-8 rounded-xl overflow-hidden shadow-lg aspect-video bg-black">
+        {youtubeEmbedUrl ? (
+          <iframe
+            src={youtubeEmbedUrl}
+            class="w-full h-full border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+          ></iframe>
+        ) : (
+          <img src={post.featuredImage} alt={post.title} class="w-full h-full object-cover" />
+        )}
+      </div>
+
+      {hasSecondaryMultimedia && (
+        <div class="mb-8 bg-gray-50 p-6 rounded-xl border border-gray-100 space-y-6">
+          <h3 class="text-lg font-semibold text-gray-800 mb-2">Contenido Multimedia Relacionado</h3>
+
+          {post.videoTiktok && (
+            <div class="w-full max-w-md mx-auto rounded-xl overflow-hidden shadow-md bg-white border p-2">
+              <EmbedSocial url={post.videoTiktok} type="tiktok" />
+            </div>
+          )}
+
+          {post.videoInstagram && (
+            <div class="w-full max-w-md mx-auto rounded-xl overflow-hidden shadow-md bg-white border p-2">
+              <EmbedSocial url={post.videoInstagram} type="instagram" />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div class="prose prose-lg max-w-none text-gray-700 space-y-6 html-content">
+        <Fragment set:html={post.content} />
+      </div>
+    </article>
+  </main>
+</Layout>
+
+<style is:global>
+  .html-content p {
+    margin-bottom: 1.5rem;
+    line-height: 1.75;
+  }
+  .html-content h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1a202c;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+</style>

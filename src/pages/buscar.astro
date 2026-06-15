@@ -1,0 +1,208 @@
+---
+// src/pages/buscar.astro
+import Layout from '../layouts/Layout.astro';
+import NewsCard from '../components/NewsCard.astro';
+import { posts as localPosts } from '../data/posts';
+
+let formattedPosts: any[] = [];
+
+try {
+  const response = await fetch(import.meta.env.WORDPRESS_API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: `
+        query GetSearchPosts {
+          posts(first: 50, where: { orderby: { field: DATE, order: DESC } }) {
+            nodes {
+              id
+              title
+              excerpt
+              date
+              slug
+              featuredImage {
+                node {
+                  sourceUrl
+                }
+              }
+              camposMultimedia {
+                urlVideoYoutube
+              }
+              actorsSociales {
+                nodes {
+                  name
+                }
+              }
+            }
+          }
+        }
+      `
+    })
+  });
+
+  const json = await response.json();
+  const wpPosts = json.data?.posts?.nodes || [];
+
+  if (wpPosts.length > 0) {
+    formattedPosts = wpPosts.map((post: any) => ({
+      title: post.title || '',
+      slug: post.slug || '',
+      date: post.date || '',
+      excerpt: post.excerpt ? post.excerpt.replace(/<[^>]*>/g, '').trim() : '', 
+      featuredImage: post.featuredImage?.node?.sourceUrl || 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=1200',
+      videoYoutube: post.camposMultimedia?.urlVideoYoutube || '',
+      actoresSociales: post.actorsSociales?.nodes?.map((node: any) => node.name?.trim()).filter(Boolean) || []
+    }));
+  } else {
+    formattedPosts = localPosts;
+  }
+} catch (error) {
+  console.error("Error en búsquedas:", error);
+  formattedPosts = localPosts;
+}
+---
+
+<Layout title="Buscar Noticias - Realidades">
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <h1 class="text-3xl font-bold text-gray-900 mb-2">Resultados de Búsqueda</h1>
+    <p class="text-gray-600 mb-8">Usa los filtros laterales para refinar los artículos cargados</p>
+
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+      <aside class="space-y-6 bg-white p-6 rounded-xl border border-gray-100 shadow-sm h-fit">
+        <div>
+          <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-4">Filtrar por Actor Social</h2>
+          <div class="space-y-3" id="filters-container">
+            {['Gobierno', 'Oposición', 'Sociedad Civil', 'Empresarios'].map((actor) => (
+              <label class="flex items-center gap-3 text-sm text-gray-600 cursor-pointer hover:text-gray-900 select-none">
+                <input 
+                  type="checkbox" 
+                  value={actor} 
+                  class="actor-filter rounded border-gray-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                />
+                <span>{actor}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </aside>
+
+      <div class="lg:col-span-3 space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6" id="news-grid">
+          {formattedPosts.map((post: any) => (
+            <div 
+              class="news-item-wrapper" 
+              data-title={post.title ? post.title.toLowerCase() : ''}
+              data-excerpt={post.excerpt ? post.excerpt.toLowerCase() : ''}
+              data-actors={JSON.stringify(post.actoresSociales || [])}
+            >
+              <NewsCard
+                title={post.title}
+                slug={post.slug}
+                date={post.date}
+                excerpt={post.excerpt}
+                featuredImage={post.featuredImage}
+                actoresSociales={post.actoresSociales || []}
+                videoYoutube={post.videoYoutube}
+              />
+            </div>
+          ))}
+        </div>
+
+        <div id="empty-state" class="hidden text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-200">
+          <svg class="mx-auto h-12 w-12 text-gray-400 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <h3 class="text-sm font-medium text-gray-900 mb-1">No se encontraron resultados</h3>
+          <p class="text-xs text-gray-500">Prueba ajustando tus términos de búsqueda o desmarcando filtros.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  function ejecutarFiltroDeBusqueda() {
+    // IMPORTANTE: Buscamos el input del Header. Asegúrate de que el input de tu Header tenga el ID 'search-input' o cámbialo aquí.
+    const inputBusqueda = document.getElementById('search-input') as HTMLInputElement;
+    const selectoresActores = document.querySelectorAll('.actor-filter') as NodeListOf<HTMLInputElement>;
+    const contenedoresTarjetas = document.querySelectorAll('.news-item-wrapper') as NodeListOf<HTMLElement>;
+    const contenedorVacio = document.getElementById('empty-state');
+
+    const limpiarYNormalizar = (texto: string) => {
+      return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    };
+
+    function procesarFiltros() {
+      const terminoBuscado = inputBusqueda ? limpiarYNormalizar(inputBusqueda.value) : '';
+      
+      const actoresSeleccionados = Array.from(selectoresActores)
+        .filter(input => input.checked)
+        .map(input => limpiarYNormalizar(input.value));
+
+      let itemsVisibles = 0;
+
+      contenedoresTarjetas.forEach((tarjeta) => {
+        const tituloPost = limpiarYNormalizar(tarjeta.dataset.title || '');
+        const extractoPost = limpiarYNormalizar(tarjeta.dataset.excerpt || '');
+        
+        let actoresDelPost: string[] = [];
+        try {
+          actoresDelPost = JSON.parse(tarjeta.dataset.actors || '[]');
+        } catch (e) {
+          actoresDelPost = [];
+        }
+        
+        const actoresNormalizados = actoresDelPost.map(act => limpiarYNormalizar(act));
+
+        // Validación del campo de texto
+        const coincideConTexto = terminoBuscado === '' || 
+                                 tituloPost.includes(terminoBuscado) || 
+                                 extractoPost.includes(terminoBuscado) || 
+                                 actoresNormalizados.some(act => act.includes(terminoBuscado));
+
+        // Validación de checkboxes
+        const coincideConFiltros = actoresSeleccionados.length === 0 || actoresSeleccionados.some(act => 
+          actoresNormalizados.includes(act)
+        );
+
+        if (coincideConTexto && coincideConFiltros) {
+          tarjeta.classList.remove('hidden');
+          itemsVisibles++;
+        } else {
+          tarjeta.classList.add('hidden');
+        }
+      });
+
+      if (contenedorVacio) {
+        if (itemsVisibles === 0) {
+          contenedorVacio.classList.remove('hidden');
+        } else {
+          contenedorVacio.classList.add('hidden');
+        }
+      }
+    }
+
+    // Capturar query de la URL al cargar e inyectarlo en el input del Header
+    const parametrosUrl = new URLSearchParams(window.location.search);
+    const parametroQuery = parametrosUrl.get('q');
+    if (parametroQuery && inputBusqueda) {
+      inputBusqueda.value = parametroQuery.trim();
+    }
+
+    // Escuchadores sobre el input del Header
+    if (inputBusqueda) {
+      inputBusqueda.addEventListener('input', procesarFiltros);
+    }
+    
+    selectoresActores.forEach(checkbox => {
+      checkbox.addEventListener('change', procesarFiltros);
+    });
+
+    // Ejecución inicial obligatoria
+    procesarFiltros();
+  }
+
+  // Lanzamiento seguro con soporte para transiciones de Astro
+  ejecutarFiltroDeBusqueda();
+  document.addEventListener('astro:page-load', ejecutarFiltroDeBusqueda);
+</script>

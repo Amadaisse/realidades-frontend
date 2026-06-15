@@ -1,0 +1,102 @@
+---
+// src/components/Hero.astro
+
+interface Props {
+    title: string;
+    slug: string;
+    date: string;
+    excerpt: string;
+    featuredImage: string;
+    actoresSociales: string[]; // CORREGIDO: Cambiado a un arreglo de strings simples
+    videoYoutube?: string;
+}
+
+const { title, slug, date, excerpt, featuredImage, actoresSociales = [], videoYoutube } = Astro.props;
+
+const postUrl = videoYoutube ? '/' + slug + '?autoplay=1' : '/' + slug;
+
+const formattedDate = new Date(date).toLocaleDateString('es-ES', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+});
+
+// Colores optimizados con opacidad de fondo para lucir impecables sobre el fondo oscuro del Hero
+const actorColors: Record<string, string> = {
+    'Gobierno': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
+    'Oposicion': 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+    'Oposición': 'bg-orange-500/20 text-orange-300 border-orange-500/40',
+    'Sociedad Civil': 'bg-purple-500/20 text-purple-300 border-purple-500/40',
+    'Empresarios': 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+};
+
+const getActorColor = (actorName: string): string => {
+    return actorColors[actorName] || 'bg-gray-500/20 text-gray-300 border-gray-500/40';
+};
+---
+
+<section class="relative bg-gradient-to-r from-gray-900 to-gray-800 overflow-hidden">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-20">
+        <div class="grid lg:grid-cols-2 gap-8 items-center">
+            <div class="text-white z-10">
+                <div class="flex items-center gap-2 mb-4">
+                    <span class="bg-red-600 text-white text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wide">
+                        Destacado
+                    </span>
+                    <span class="text-gray-300 text-sm">{formattedDate}</span>
+                </div>
+
+                <h1 class="text-3xl md:text-4xl lg:text-5xl font-bold leading-tight mb-4">
+                    <a href={postUrl} class="hover:text-blue-400 transition-colors">
+                        {title}
+                    </a>
+                </h1>
+
+                <p class="text-gray-300 text-lg mb-6 line-clamp-3">
+                    {excerpt}
+                </p>
+
+                {actoresSociales.length > 0 && (
+                    <div class="flex flex-wrap items-center gap-2 mb-6">
+                        {actoresSociales.map((actorName) => (
+                            <span class={'inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ' + getActorColor(actorName)}>
+                                {actorName}
+                            </span>
+                        ))}
+                    </div>
+                )}
+
+                <a
+                    href={postUrl}
+                    class="inline-flex items-center gap-2 bg-white text-gray-900 px-6 py-3 rounded-lg font-semibold hover:bg-gray-100 transition-colors"
+                >
+                    Leer mas
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                    </svg>
+                </a>
+            </div>
+
+            <a href={postUrl} class="relative lg:h-96 rounded-xl overflow-hidden shadow-2xl block">
+                <img
+                    src={featuredImage}
+                    alt={title}
+                    class="w-full h-full object-cover"
+                />
+                {videoYoutube && (
+                    <div class="absolute inset-0 bg-black/30 flex items-center justify-center">
+                        <div class="absolute bottom-4 left-4 inline-flex items-center gap-2 bg-black/70 text-white px-3 py-1.5 rounded-full text-sm font-medium">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M8 5v14l11-7z" />
+                            </svg>
+                            Ver video
+                        </div>
+                    </div>
+                )}
+                <div class="absolute inset-0 bg-gradient-to-t from-gray-900/50 to-transparent lg:hidden"></div>
+            </a>
+        </div>
+    </div>
+
+    <div class="absolute top-0 right-0 w-1/2 h-full bg-gradient-to-l from-blue-600/10 to-transparent pointer-events-none"></div>
+</section>

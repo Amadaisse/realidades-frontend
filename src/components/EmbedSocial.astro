@@ -1,0 +1,95 @@
+---
+// src/components/EmbedSocial.astro
+interface Props {
+  url: string;
+  type: 'tiktok' | 'instagram';
+}
+
+const { url, type } = Astro.props;
+const cleanUrl = url ? url.split('?')[0] : '';
+---
+
+<div class="social-embed-container my-6 mx-auto max-w-full flex justify-center" data-type={type} data-url={cleanUrl}>
+  {/* Fachada (Placeholder) */}
+  <div class="embed-facade w-full max-w-[325px] md:max-w-[540px] min-h-[500px] border border-slate-200 rounded-xl flex flex-col items-center justify-center bg-slate-50 p-4 text-center cursor-pointer transition hover:bg-slate-100 shadow-sm" data-placeholder>
+    <div class="icon-wrapper mb-3 text-slate-400">
+      {type === 'tiktok' ? (
+        <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 24 24"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.02 1.59 4.23.74.92 1.7 1.67 2.8 2.21A8.2 8.2 0 0 0 24 7.22v3.69a11.1 11.1 0 0 1-5.17-1.44 11.8 11.8 0 0 1-1.31-.95v6.52c.07 2.11-.64 4.22-1.99 5.86A7.8 7.8 0 0 1 10.3 24a8.2 8.2 0 0 1-5.69-2.34 8.7 8.7 0 0 1-2.44-5.83 8.5 8.5 0 0 1 1.79-5.74 8.1 8.1 0 0 1 5.37-3.23c.01 1.25 0 2.5.01 3.75a4.4 4.4 0 0 0-3.32 2.5 4.7 4.7 0 0 0 .28 3.86 4.3 4.3 0 0 0 3.32 2.19c2.34.25 4.54-1.29 4.95-3.57.1-.55.12-1.12.11-1.68V0h-.02z"/></svg>
+      ) : (
+        <svg class="w-12 h-12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+      )}
+    </div>
+    <p class="text-sm font-medium text-slate-700">Cargando de forma segura...</p>
+    <div class="spinner mt-4 w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin"></div>
+  </div>
+
+  {/* Bloques oficiales de las redes */}
+  <template data-embed-template>
+    {type === 'tiktok' ? (
+      <blockquote class="tiktok-embed w-full max-w-[325px] md:max-w-[540px]" cite={cleanUrl} data-video-id={cleanUrl.match(/\/video\/(\d+)/)?.[1]}>
+        <section></section>
+      </blockquote>
+    ) : (
+      <blockquote class="instagram-media w-full max-w-[325px] md:max-w-[540px] bg-white border rounded-xl" data-instgrm-captioned data-instgrm-permalink={cleanUrl} data-instgrm-version="14">
+      </blockquote>
+    )}
+  </template>
+</div>
+
+<script>
+  function initLazySocialEmbeds() {
+    const containers = document.querySelectorAll('.social-embed-container');
+    
+    if ('IntersectionObserver' in window) {
+      const observer = new IntersectionObserver((entries, obs) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const container = entry.target;
+            activateEmbed(container);
+            obs.unobserve(container);
+          }
+        });
+      }, {
+        rootMargin: '200px 0px'
+      });
+
+      containers.forEach(container => observer.observe(container));
+    } else {
+      containers.forEach(container => activateEmbed(container));
+    }
+
+    function activateEmbed(container: Element) {
+      const template = container.querySelector('template[data-embed-template]') as HTMLTemplateElement;
+      const facade = container.querySelector('[data-placeholder]');
+      const type = container.getAttribute('data-type');
+      
+      if (template && facade) {
+        const clone = template.content.cloneNode(true);
+        container.replaceChild(clone, facade);
+
+        if (type === 'tiktok' && !document.getElementById('tiktok-js')) {
+          const script = document.createElement('script');
+          script.id = 'tiktok-js';
+          script.src = 'https://www.tiktok.com/embed.js';
+          script.async = true;
+          document.body.appendChild(script);
+        } else if (type === 'tiktok' && (window as any).tiktokEmbed) {
+          (window as any).tiktokEmbed.lib.render();
+        }
+
+        if (type === 'instagram' && !document.getElementById('instagram-js')) {
+          const script = document.createElement('script');
+          script.id = 'instagram-js';
+          script.src = 'https://www.instagram.com/embed.js';
+          script.async = true;
+          document.body.appendChild(script);
+        } else if (type === 'instagram' && (window as any).instgrm) {
+          (window as any).instgrm.Embeds.process();
+        }
+      }
+    }
+  }
+
+  initLazySocialEmbeds();
+  document.addEventListener('astro:after-swap', initLazySocialEmbeds);
+</script>
