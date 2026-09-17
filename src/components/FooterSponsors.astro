@@ -1,0 +1,29 @@
+---
+// src/components/FooterSponsors.astro
+interface Sponsor {
+  image: string;
+  link: string;
+  title: string;
+}
+
+interface Props {
+  sponsors?: Sponsor[];
+}
+
+const { sponsors = [] } = Astro.props;
+---
+
+<section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 my-8">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {sponsors.map((sponsor) => (
+      <a 
+        href={sponsor.link || '#'} 
+        target="_blank" 
+        rel="sponsored nofollow"
+        class="bg-blue-300 hover:opacity-90 transition-opacity rounded-lg h-24 flex items-center justify-center overflow-hidden shadow-sm"
+      >
+        <img src={sponsor.image} alt={sponsor.title} class="w-full h-full object-cover" />
+      </a>
+    ))}
+  </div>
+</section>

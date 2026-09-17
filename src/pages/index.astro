@@ -72,6 +72,16 @@ try {
 // Clasificamos las noticias para la interfaz
 const featuredPost = formattedPosts[0];
 const gridPosts = formattedPosts.slice(1);
+
+// Configuración o placeholder del banner intercalado en la grilla (33.33% ancho)
+const gridBanner = {
+  image: 'https://placehold.co/600x700/60a5fa/ffffff?text=ancho+33.33%25%0Aalto+=+a+las+noticias',
+  link: '#',
+  title: 'Publicidad destacada'
+};
+
+// Definimos la posición exacta donde aparecerá el banner en la grilla (0 es primera tarjeta, 1 es la segunda)
+const bannerIndexPosition = 1;
 ---
 
 <Layout title="Realidades - Inicio">
@@ -97,17 +107,39 @@ const gridPosts = formattedPosts.slice(1);
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {gridPosts.map((post: any) => (
-                    <NewsCard
-                        title={post.title}
-                        slug={post.slug}
-                        date={post.date}
-                        excerpt={post.excerpt}
-                        featuredImage={post.featuredImage}
-                        actoresSociales={post.actoresSociales}
-                        videoYoutube={post.videoYoutube}
-                    />
-                ))}
+                {gridPosts.map((post: any, index: number) => {
+                    // Si el índice coincide con la posición deseada, mostramos el banner en lugar de la tarjeta de noticias
+                    if (index === bannerIndexPosition && gridBanner) {
+                        return (
+                            <div class="bg-blue-400 rounded-xl overflow-hidden shadow-sm border border-blue-300 min-h-[380px] flex items-center justify-center hover:shadow-lg transition-shadow duration-300">
+                                <a 
+                                    href={gridBanner.link} 
+                                    target="_blank" 
+                                    rel="sponsored nofollow" 
+                                    class="w-full h-full block group relative"
+                                >
+                                    <img 
+                                        src={gridBanner.image} 
+                                        alt={gridBanner.title} 
+                                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    />
+                                </a>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <NewsCard
+                            title={post.title}
+                            slug={post.slug}
+                            date={post.date}
+                            excerpt={post.excerpt}
+                            featuredImage={post.featuredImage}
+                            actoresSociales={post.actoresSociales}
+                            videoYoutube={post.videoYoutube}
+                        />
+                    );
+                })}
             </div>
         </section>
     </main>
