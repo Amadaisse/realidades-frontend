@@ -1,16 +1,10 @@
 ---
+// src/components/Header.astro
 interface Props {
 	searchQuery?: string;
-	topBannerUrl?: string;
-	topBannerImage?: string;
 }
 
-const { 
-	searchQuery = '', 
-	topBannerUrl = '#', 
-	topBannerImage = 'https://placehold.co/1200x120/2563eb/ffffff?text=Espacio+Publicitario+100%25+x+120px' 
-} = Astro.props;
-
+const { searchQuery = '' } = Astro.props;
 const logoText = "Realidades";
 ---
 
@@ -51,21 +45,10 @@ const logoText = "Realidades";
 			<!-- Navigation -->
 			<nav class="hidden md:flex items-center gap-4">
 				<a href="/" class="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">Inicio</a>
-				<a href="#" class="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">Categorias</a>
-				<a href="#" class="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">Sobre</a>
+				<a href="#" class="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">Categorías</a>
+				<a href="#" class="text-gray-600 hover:text-gray-900 text-sm font-medium transition-colors">Sobre Nosotros</a>
 			</nav>
 		</div>
-	</div>
-
-	<!-- Banner Horizontal de Publicidad (100% Ancho x 120px) -->
-	<div class="w-full bg-blue-100 min-h-[120px] flex items-center justify-center border-t border-gray-200 overflow-hidden">
-		<a href={topBannerUrl} target="_blank" rel="sponsored nofollow" class="w-full block">
-			<img 
-				src={topBannerImage} 
-				alt="Publicidad" 
-				class="w-full h-[120px] object-cover"
-			/>
-		</a>
 	</div>
 </header>
 

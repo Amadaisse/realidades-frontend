@@ -3,7 +3,6 @@
 import Layout from '../layouts/Layout.astro';
 import NewsCard from '../components/NewsCard.astro';
 
-// Componentes interactivos de React (Islas)
 import PersonajeCarousel from '../components/PersonajeCarousel.jsx';
 import ActualidadCarousel from '../components/ActualidadCarousel.jsx';
 import ApoyoComunidadCarousel from '../components/ApoyoComunidadCarousel.jsx';
@@ -12,10 +11,9 @@ import SocialVideoCarousel from '../components/SocialVideoCarousel.jsx';
 import { posts as localPosts } from '../data/posts';
 
 let wpPosts: any[] = [];
-let pageConfig: any = null;
+let bannerData: any = null;
 
 try {
-  // Conexión dinámica usando la variable de entorno
   const apiUrl = import.meta.env.WORDPRESS_API_URL || 'https://realidades.lastorres308.com/graphql';
 
   const response = await fetch(apiUrl, {
@@ -23,8 +21,8 @@ try {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       query: `
-        query GetHomeAndBannersData {
-          # 1. Banners y Auspiciadores desde la página 'configuracion-banners'
+        query GetCompleteHomeData {
+          # 1. Banners y Auspiciadores
           page(id: "configuracion-banners", idType: URI) {
             bannersGlobales {
               banner1Imagen { sourceUrl }
@@ -40,7 +38,7 @@ try {
             }
           }
 
-          # 2. Entradas reales de WordPress
+          # 2. Entradas de WordPress
           posts(first: 50, where: { orderby: { field: DATE, order: DESC } }) {
             nodes {
               id
@@ -79,13 +77,13 @@ try {
 
   const json = await response.json();
   wpPosts = json.data?.posts?.nodes || [];
-  pageConfig = json.data?.page?.bannersGlobales || null;
+  bannerData = json.data?.page?.bannersGlobales || null;
 } catch (error) {
-  console.error("Error conectando con WordPress API:", error);
+  console.error("Error al conectar con la API de WordPress:", error);
   wpPosts = [];
 }
 
-// FORMATO DE NOTICIAS
+// PROCESAMIENTO DE PUBLICACIONES
 const allPostsFormatted = wpPosts.length > 0 
   ? wpPosts.map((post: any) => ({
       id: post.id,
@@ -108,7 +106,7 @@ const allPostsFormatted = wpPosts.length > 0
 
 const usedPostIds = new Set<string>();
 
-// FILTRADO Y ORDEN DE DESTACADOS (POST 1 A POST 5)
+// FILTRADO DE POSTS DESTACADOS (1 A 5)
 const candidatosDestacados = allPostsFormatted.filter((p: any) => p.destacadoHome === 'destacados');
 
 function obtenerDestacadoPorOrden(orden: number) {
@@ -134,8 +132,7 @@ const destacadosFinales = arrayDestacados.map(post => {
     usedPostIds.add(relleno.id);
     return relleno;
   }
-  return null;
-}).filter(Boolean);
+  return null;}).filter(Boolean);
 
 post1 = destacadosFinales[0] || allPostsFormatted[0];
 post2 = destacadosFinales[1] || allPostsFormatted[1];
@@ -149,7 +146,7 @@ if (post3) usedPostIds.add(post3.id);
 if (post4) usedPostIds.add(post4.id);
 if (post5) usedPostIds.add(post5.id);
 
-// LISTAS PARA CARRUSELES
+// PERSONAJES Y COMUNIDAD
 const personajesList = allPostsFormatted
   .filter((p: any) => p.esPersonaje)
   .slice(0, 5)
@@ -180,28 +177,28 @@ const post10 = remainingPosts[3] || null;
 const post11 = remainingPosts[4] || null;
 const post12 = remainingPosts[5] || null;
 
-// EXTRAER BANNERS Y AUSPICIADORES
-const banner1Src = pageConfig?.banner1Imagen?.sourceUrl || '';
-const banner1IsSticky = Boolean(pageConfig?.banner1Sticky);
-const banner2Src = pageConfig?.banner2Imagen?.sourceUrl || '';
-const banner3Src = pageConfig?.banner3Imagen?.sourceUrl || '';
+// EXTRACCIÓN DE BANNERS REALES
+const banner1Src = bannerData?.banner1Imagen?.sourceUrl || '';
+const banner1Sticky = Boolean(bannerData?.banner1Sticky);
+const banner2Src = bannerData?.banner2Imagen?.sourceUrl || '';
+const banner3Src = bannerData?.banner3Imagen?.sourceUrl || '';
 
-// Lista limpia de auspiciadores subidos (filtramos los vacíos)
-const auspiciadores = [
-  pageConfig?.logo1?.sourceUrl,
-  pageConfig?.logo2?.sourceUrl,
-  pageConfig?.logo3?.sourceUrl,
-  pageConfig?.logo4?.sourceUrl,
-  pageConfig?.logo5?.sourceUrl,
-  pageConfig?.logo6?.sourceUrl,
+// LISTA DINÁMICA DE AUSPICIADORES (Logos de WP)
+const auspiciadoresReales = [
+  bannerData?.logo1?.sourceUrl,
+  bannerData?.logo2?.sourceUrl,
+  bannerData?.logo3?.sourceUrl,
+  bannerData?.logo4?.sourceUrl,
+  bannerData?.logo5?.sourceUrl,
+  bannerData?.logo6?.sourceUrl,
 ].filter(Boolean);
 ---
 
 <Layout title="Realidades - Portal de Noticias">
   
-  {/* BANNER 1 SUPERIOR (Se vuelve sticky SOLO si el check en WP está marcado) */}
+  {/* BANNER 1 SUPERIOR DINÁMICO (Solo si existe y con sticky opcional) */}
   {banner1Src && (
-    <div class={`w-full bg-white flex justify-center py-2 z-40 transition-all ${banner1IsSticky ? 'sticky top-0 shadow-md' : ''}`}>
+    <div class={`w-full bg-white flex justify-center py-2 z-40 transition-all border-b border-gray-100 ${banner1Sticky ? 'sticky top-16 shadow-md' : ''}`}>
       <div class="w-[90%] max-w-[1400px] flex justify-center items-center overflow-hidden">
         <img src={banner1Src} alt="Publicidad Cabecera" class="max-h-[100px] object-contain" />
       </div>
@@ -210,7 +207,7 @@ const auspiciadores = [
 
   <main class="w-[90%] max-w-[1400px] mx-auto my-6 font-sans">
     
-    {/* MALLA PRINCIPAL 3 COLUMNAS */}
+    {/* MALLA PRINCIPAL DE 3 COLUMNAS */}
     <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
       
       {/* Columna Izquierda (25%) */}
@@ -244,10 +241,10 @@ const auspiciadores = [
         )}
       </div>
 
-      {/* Columna Derecha (25%) */}
+      {/* Columna Derecha (25%) - Muestra Banner 3 o Post 4 de respaldo */}
       <div class="md:col-span-3 flex flex-col gap-6">
         {banner3Src ? (
-          <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 flex items-center justify-center">
+          <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 flex items-center justify-center border border-gray-100">
             <img src={banner3Src} alt="Publicidad Lateral" class="w-full h-full object-cover" />
           </div>
         ) : (
@@ -258,7 +255,7 @@ const auspiciadores = [
 
     </div>
 
-    {/* SECCIONES TRÍPTICO INTERMEDIO */}
+    {/* TRÍPTICO INTERMEDIO */}
     <div class="grid grid-cols-1 md:grid-cols-12 gap-6 my-8 items-start">
       <div class="md:col-span-3">
         <PersonajeCarousel personajes={personajesList} client:visible />
@@ -278,7 +275,7 @@ const auspiciadores = [
       </div>
     )}
 
-    {/* GRID INFERIOR (NOTICIAS Y VIDEOS) */}
+    {/* GRID INFERIOR */}
     <div class="grid grid-cols-1 md:grid-cols-12 gap-6 my-8">
       <div class="md:col-span-3 flex flex-col gap-6">
         <div class="bg-amber-400 text-slate-900 font-bold p-6 rounded-xl min-h-[280px] flex items-center justify-center text-center shadow-sm">
@@ -304,16 +301,16 @@ const auspiciadores = [
       </div>
     </div>
 
-    {/* SECCIÓN DE AUSPICIADORES DINÁMICOS */}
-    {auspiciadores.length > 0 && (
+    {/* AUSPICIADORES DESDE WORDPRESS */}
+    {auspiciadoresReales.length > 0 && (
       <div class="my-12 pt-8 border-t border-gray-200">
         <h3 class="text-center text-xs font-bold uppercase tracking-widest text-gray-400 mb-6">
           Nuestros Auspiciadores
         </h3>
         <div class="flex flex-wrap justify-center items-center gap-8">
-          {auspiciadores.map((logoUrl) => (
+          {auspiciadoresReales.map((logoUrl) => (
             <div class="h-16 max-w-[180px] flex items-center justify-center p-2">
-              <img src={logoUrl} alt="Auspiciador" class="max-h-full max-w-full object-contain grayscale hover:grayscale-0 transition-all duration-300" />
+              <img src={logoUrl} alt="Auspiciador" class="max-h-full max-w-full object-contain hover:scale-105 transition-all duration-300" />
             </div>
           ))}
         </div>

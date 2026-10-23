@@ -2,7 +2,6 @@
 // src/layouts/Layout.astro
 import '../styles/global.css';
 import Header from '../components/Header.astro';
-import FooterSponsors from '../components/FooterSponsors.astro';
 
 interface Props {
     title?: string;
@@ -11,14 +10,6 @@ interface Props {
 }
 
 const { title = 'Realidades - Noticias', description = 'Portal de noticias sobre politica y sociedad', image } = Astro.props;
-
-// Lista de auspiciadores por defecto (puedes reemplazar con datos reales de WordPress)
-const defaultSponsors = [
-    { title: "Sponsor 1", image: "https://placehold.co/400x100/2563eb/ffffff?text=Auspiciador+1", link: "#" },
-    { title: "Sponsor 2", image: "https://placehold.co/400x100/1d4ed8/ffffff?text=Auspiciador+2", link: "#" },
-    { title: "Sponsor 3", image: "https://placehold.co/400x100/1e40af/ffffff?text=Auspiciador+3", link: "#" },
-    { title: "Sponsor 4", image: "https://placehold.co/400x100/1e3a8a/ffffff?text=Auspiciador+4", link: "#" }
-];
 ---
 
 <!doctype html>
@@ -35,7 +26,6 @@ const defaultSponsors = [
         <meta property="og:description" content={description} />
         <meta name="twitter:card" content={image ? 'summary_large_image' : 'summary'} />
         
-        {/* 1. Bloqueamos visualmente el documento desde la raíz */}
         <style>
             html {
                 opacity: 0;
@@ -43,12 +33,10 @@ const defaultSponsors = [
             }
         </style>
 
-        {/* 2. Script de emergencia inline: Se ejecuta ANTES de pintar cualquier texto plano */}
         <script is:inline>
             function showPage() {
                 document.documentElement.style.opacity = '1';
             }
-            // Si Tailwind ya cargó o el DOM está listo, mostramos todo limpio
             if (document.readyState === 'complete' || document.readyState === 'interactive') {
                 showPage();
             } else {
@@ -65,9 +53,6 @@ const defaultSponsors = [
         <div class="flex-grow">
             <slot />
         </div>
-
-        {/* Franja de Auspiciadores justo encima del Footer */}
-        <FooterSponsors sponsors={defaultSponsors} />
 
         <footer class="bg-gray-900 text-white py-12 mt-auto w-full block">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
