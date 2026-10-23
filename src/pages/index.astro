@@ -13,16 +13,17 @@ import { posts as localPosts } from '../data/posts';
 let wpPosts: any[] = [];
 let bannerData: any = null;
 
-try {
-  const apiUrl = import.meta.env.WORDPRESS_API_URL || 'https://realidades.lastorres308.com/graphql';
+// Conexión directa a la API de WordPress en tu servidor
+const apiUrl = 'https://realidades.lastorres308.com/graphql';
 
+try {
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       query: `
         query GetCompleteHomeData {
-          # 1. Banners y Auspiciadores mapeados a los nombres reales de ACF
+          # 1. Banners y Auspiciadores mapeados a la página de WordPress
           page(id: "configuracion-banners", idType: URI) {
             bannersGlobales {
               banner1Imagen { sourceUrl }
@@ -76,6 +77,11 @@ try {
   });
 
   const json = await response.json();
+
+  if (json.errors) {
+    console.error("Errores en la consulta GraphQL:", json.errors);
+  }
+
   wpPosts = json.data?.posts?.nodes || [];
   bannerData = json.data?.page?.bannersGlobales || null;
 } catch (error) {
@@ -83,7 +89,7 @@ try {
   wpPosts = [];
 }
 
-// PROCESAMIENTO MAPPED CON CAMPOS REALES
+// FORMATO Y MAPEADO DE ENTRADAS
 const allPostsFormatted = wpPosts.length > 0 
   ? wpPosts.map((post: any) => ({
       id: post.id,
@@ -95,12 +101,12 @@ const allPostsFormatted = wpPosts.length > 0
       videoYoutube: post.camposMultimedia?.urlVideoYoutube || '',
       videoTiktok: post.camposMultimedia?.urlVideoTiktok || '',
       videoInstagram: post.camposMultimedia?.urlVideoInstagram || '',
-      // Extracción limpia de Actores Sociales evitando [object Object]
+      // Mapeado limpio de actores sociales
       actoresSociales: post.actorsSociales?.nodes?.map((n: any) => (typeof n === 'string' ? n : n?.name)).filter(Boolean) || [],
       insignia: post.camposHome?.insigniaNota || '',
       destacadoHome: post.camposHome?.destacadoHome || 'ninguno',
       ordenDestacado: parseInt(post.camposHome?.ordenDestacado) || 99,
-      // Compatible con nombres en guion bajo y camelCase
+      // Compatible con nombres en guión bajo y camelCase
       esPersonaje: Boolean(post.camposHome?.es_personaje || post.camposHome?.esPersonaje),
       apoyoComunidad: Boolean(post.camposHome?.apoyo_comunidad || post.camposHome?.apoyoComunidad)
     }))
@@ -108,7 +114,7 @@ const allPostsFormatted = wpPosts.length > 0
 
 const usedPostIds = new Set<string>();
 
-// FILTRADO DE POSTS DESTACADOS (1 A 5)
+// FILTRADO Y ORDEN DE POSTS DESTACADOS (1 A 5)
 const candidatosDestacados = allPostsFormatted.filter((p: any) => p.destacadoHome === 'destacados');
 
 function obtenerDestacadoPorOrden(orden: number) {
@@ -149,7 +155,7 @@ if (post3) usedPostIds.add(post3.id);
 if (post4) usedPostIds.add(post4.id);
 if (post5) usedPostIds.add(post5.id);
 
-// LISTAS DE CARRUSELES
+// CARRUSELES Y SECCIONES
 const personajesList = allPostsFormatted
   .filter((p: any) => p.esPersonaje)
   .slice(0, 5)
@@ -180,13 +186,13 @@ const post10 = remainingPosts[3] || null;
 const post11 = remainingPosts[4] || null;
 const post12 = remainingPosts[5] || null;
 
-// BANNERS Y AUSPICIADORES DESDE WORDPRESS
+// EXTRAER BANNERS REALES DE WORDPRESS
 const banner1Src = bannerData?.banner1Imagen?.sourceUrl || bannerData?.banner1_imagen?.sourceUrl || '';
 const banner1Sticky = Boolean(bannerData?.banner1IsSticky || bannerData?.banner1_is_sticky);
 const banner2Src = bannerData?.banner2Imagen?.sourceUrl || bannerData?.banner2_imagen?.sourceUrl || '';
 const banner3Src = bannerData?.banner3Imagen?.sourceUrl || bannerData?.banner3_imagen?.sourceUrl || '';
 
-// LISTA DE LOGOS DE AUSPICIADORES REALES
+// LISTA DINÁMICA DE AUSPICIADORES
 const auspiciadoresReales = [
   bannerData?.logo1?.sourceUrl || bannerData?.logo_1?.sourceUrl,
   bannerData?.logo2?.sourceUrl || bannerData?.logo_2?.sourceUrl,
@@ -244,7 +250,7 @@ const auspiciadoresReales = [
         )}
       </div>
 
-      {/* Columna Derecha (25%) - Reemplaza Post 4 con el Banner 3 si está cargado */}
+      {/* Columna Derecha (25%) */}
       <div class="md:col-span-3 flex flex-col gap-6">
         {banner3Src ? (
           <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 flex items-center justify-center border border-gray-100 min-h-[250px]">
@@ -304,7 +310,7 @@ const auspiciadoresReales = [
       </div>
     </div>
 
-    {/* AUSPICIADORES REALES DE WORDPRESS */}
+    {/* AUSPICIADORES DESDE WORDPRESS */}
     {auspiciadoresReales.length > 0 && (
       <div class="my-12 pt-8 border-t border-gray-200">
         <h3 class="text-center text-xs font-bold uppercase tracking-widest text-gray-400 mb-6">
