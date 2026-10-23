@@ -13,8 +13,11 @@ import { posts as localPosts } from '../data/posts';
 let wpPosts: any[] = [];
 let bannerData: any = null;
 
-// Conexión directa a la API de WordPress en tu servidor
-const apiUrl = 'https://realidades.lastorres308.com/graphql';
+// Variables de diagnóstico
+let debugError: string | null = null;
+let graphqlErrors: any = null;
+
+const apiUrl = import.meta.env.WORDPRESS_API_URL || 'https://realidades.lastorres308.com/graphql';
 
 try {
   const response = await fetch(apiUrl, {
@@ -23,7 +26,7 @@ try {
     body: JSON.stringify({
       query: `
         query GetCompleteHomeData {
-          # 1. Banners y Auspiciadores mapeados a la página de WordPress
+          # 1. Banners y Auspiciadores
           page(id: "configuracion-banners", idType: URI) {
             bannersGlobales {
               banner1Imagen { sourceUrl }
@@ -76,20 +79,25 @@ try {
     })
   });
 
-  const json = await response.json();
+  if (!response.ok) {
+    debugError = `Error HTTP ${response.status}: ${response.statusText}`;
+  } else {
+    const json = await response.json();
 
-  if (json.errors) {
-    console.error("Errores en la consulta GraphQL:", json.errors);
+    if (json.errors) {
+      graphqlErrors = json.errors;
+      debugError = `Error de GraphQL devuelto por WordPress (${json.errors.length} errores).`;
+    }
+
+    wpPosts = json.data?.posts?.nodes || [];
+    bannerData = json.data?.page?.bannersGlobales || null;
   }
-
-  wpPosts = json.data?.posts?.nodes || [];
-  bannerData = json.data?.page?.bannersGlobales || null;
-} catch (error) {
-  console.error("Error al conectar con la API de WordPress:", error);
+} catch (error: any) {
+  debugError = `Error de conexión/red: ${error.message || String(error)}`;
   wpPosts = [];
 }
 
-// FORMATO Y MAPEADO DE ENTRADAS
+// PROCESAMIENTO MAPPED
 const allPostsFormatted = wpPosts.length > 0 
   ? wpPosts.map((post: any) => ({
       id: post.id,
@@ -101,12 +109,10 @@ const allPostsFormatted = wpPosts.length > 0
       videoYoutube: post.camposMultimedia?.urlVideoYoutube || '',
       videoTiktok: post.camposMultimedia?.urlVideoTiktok || '',
       videoInstagram: post.camposMultimedia?.urlVideoInstagram || '',
-      // Mapeado limpio de actores sociales
       actoresSociales: post.actorsSociales?.nodes?.map((n: any) => (typeof n === 'string' ? n : n?.name)).filter(Boolean) || [],
       insignia: post.camposHome?.insigniaNota || '',
       destacadoHome: post.camposHome?.destacadoHome || 'ninguno',
       ordenDestacado: parseInt(post.camposHome?.ordenDestacado) || 99,
-      // Compatible con nombres en guión bajo y camelCase
       esPersonaje: Boolean(post.camposHome?.es_personaje || post.camposHome?.esPersonaje),
       apoyoComunidad: Boolean(post.camposHome?.apoyo_comunidad || post.camposHome?.apoyoComunidad)
     }))
@@ -114,7 +120,7 @@ const allPostsFormatted = wpPosts.length > 0
 
 const usedPostIds = new Set<string>();
 
-// FILTRADO Y ORDEN DE POSTS DESTACADOS (1 A 5)
+// FILTRADO DE DESTACADOS (1 A 5)
 const candidatosDestacados = allPostsFormatted.filter((p: any) => p.destacadoHome === 'destacados');
 
 function obtenerDestacadoPorOrden(orden: number) {
@@ -155,7 +161,7 @@ if (post3) usedPostIds.add(post3.id);
 if (post4) usedPostIds.add(post4.id);
 if (post5) usedPostIds.add(post5.id);
 
-// CARRUSELES Y SECCIONES
+// LISTAS DE CARRUSELES
 const personajesList = allPostsFormatted
   .filter((p: any) => p.esPersonaje)
   .slice(0, 5)
@@ -186,13 +192,13 @@ const post10 = remainingPosts[3] || null;
 const post11 = remainingPosts[4] || null;
 const post12 = remainingPosts[5] || null;
 
-// EXTRAER BANNERS REALES DE WORDPRESS
+// EXTRACCIÓN DE BANNERS REALES
 const banner1Src = bannerData?.banner1Imagen?.sourceUrl || bannerData?.banner1_imagen?.sourceUrl || '';
 const banner1Sticky = Boolean(bannerData?.banner1IsSticky || bannerData?.banner1_is_sticky);
 const banner2Src = bannerData?.banner2Imagen?.sourceUrl || bannerData?.banner2_imagen?.sourceUrl || '';
 const banner3Src = bannerData?.banner3Imagen?.sourceUrl || bannerData?.banner3_imagen?.sourceUrl || '';
 
-// LISTA DINÁMICA DE AUSPICIADORES
+// LISTA DE LOGOS DE AUSPICIADORES
 const auspiciadoresReales = [
   bannerData?.logo1?.sourceUrl || bannerData?.logo_1?.sourceUrl,
   bannerData?.logo2?.sourceUrl || bannerData?.logo_2?.sourceUrl,
@@ -205,6 +211,21 @@ const auspiciadoresReales = [
 
 <Layout title="Realidades - Portal de Noticias">
   
+  {/* ALERTA VISUAL DE DIAGNÓSTICO EN PANTALLA */}
+  {debugError && (
+    <div class="w-[90%] max-w-[1400px] mx-auto my-4 p-4 bg-red-100 border border-red-400 text-red-800 rounded-lg shadow-sm font-mono text-xs overflow-x-auto">
+      <p class="font-bold text-sm mb-1">⚠️ DIAGNÓSTICO DE CONEXIÓN CON WORDPRESS:</p>
+      <p class="mb-2"><strong>API URL utilizada:</strong> {apiUrl}</p>
+      <p class="mb-2"><strong>Detalle del error:</strong> {debugError}</p>
+      {graphqlErrors && (
+        <div>
+          <strong>Errores devueltos por GraphQL:</strong>
+          <pre class="bg-red-50 p-2 mt-1 rounded border border-red-200 text-[11px]">{JSON.stringify(graphqlErrors, null, 2)}</pre>
+        </div>
+      )}
+    </div>
+  )}
+
   {/* BANNER 1 SUPERIOR DINÁMICO */}
   {banner1Src && (
     <div class={`w-full bg-white flex justify-center py-2 z-40 transition-all border-b border-gray-100 ${banner1Sticky ? 'sticky top-16 shadow-md' : ''}`}>
@@ -310,7 +331,7 @@ const auspiciadoresReales = [
       </div>
     </div>
 
-    {/* AUSPICIADORES DESDE WORDPRESS */}
+    {/* AUSPICIADORES */}
     {auspiciadoresReales.length > 0 && (
       <div class="my-12 pt-8 border-t border-gray-200">
         <h3 class="text-center text-xs font-bold uppercase tracking-widest text-gray-400 mb-6">
