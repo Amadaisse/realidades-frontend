@@ -3,13 +3,12 @@
 import Layout from '../layouts/Layout.astro';
 import NewsCard from '../components/NewsCard.astro';
 
-// Importamos los componentes interactivos de React (Islas)
+// Componentes interactivos de React (Islas)
 import PersonajeCarousel from '../components/PersonajeCarousel.jsx';
 import ActualidadCarousel from '../components/ActualidadCarousel.jsx';
 import ApoyoComunidadCarousel from '../components/ApoyoComunidadCarousel.jsx';
 import SocialVideoCarousel from '../components/SocialVideoCarousel.jsx';
 
-// Datos locales de respaldo por resguardo en caso de caída del CMS
 import { posts as localPosts } from '../data/posts';
 
 let wpPosts: any[] = [];
@@ -22,31 +21,18 @@ try {
     body: JSON.stringify({
       query: `
         query GetCompleteHomeData {
-          # 1. Banners Globales desde la página de configuración
+          # 1. Banners Globales desde la página de configuración ACF
           page(id: "configuracion-banners", idType: URI) {
             bannersGlobales {
               banner1Imagen { sourceUrl }
               banner1IsSticky
               banner2Imagen { sourceUrl }
               banner3Imagen { sourceUrl }
-              banner3Posicion
               banner4Imagen { sourceUrl }
-              banner4Posicion
-            }
-          }
-          
-          # 2. Banners y logos globales alternativos/auspiciadores
-          pageGlobal: page(id: "Configuración Home", idType: URI) {
-            bannersYAuspiciadoresGlobales {
-              logo1 { sourceUrl }
-              logo2 { sourceUrl }
-              logo3 { sourceUrl }
-              logo4 { sourceUrl }
-              logo5 { sourceUrl }
             }
           }
 
-          # 3. Listado de Noticias (primeras 50 para clasificar correctamente)
+          # 2. Listado de Noticias de WordPress
           posts(first: 50, where: { orderby: { field: DATE, order: DESC } }) {
             nodes {
               id
@@ -67,7 +53,6 @@ try {
               actorsSociales {
                 nodes {
                   name
-                  slug
                 }
               }
               camposHome {
@@ -95,8 +80,6 @@ try {
 // --------------------------------------------------------------------------
 // PROCESAMIENTO Y DEPURACIÓN DE DATOS
 // --------------------------------------------------------------------------
-
-// Mapeo general estandarizado
 const allPostsFormatted = wpPosts.length > 0 
   ? wpPosts.map((post: any) => ({
       id: post.id,
@@ -108,7 +91,8 @@ const allPostsFormatted = wpPosts.length > 0
       videoYoutube: post.camposMultimedia?.urlVideoYoutube || '',
       videoTiktok: post.camposMultimedia?.urlVideoTiktok || '',
       videoInstagram: post.camposMultimedia?.urlVideoInstagram || '',
-      actoresSociales: post.actorsSociales?.nodes?.map((node: any) => node.name?.trim()).filter(Boolean) || [],
+      // Solución definitiva al [object Object] extrayendo solo strings limpios
+      actoresSociales: post.actorsSociales?.nodes?.map((n: any) => typeof n === 'string' ? n : n?.name).filter(Boolean) || [],
       insignia: post.camposHome?.insigniaNota || '',
       destacadoHome: post.camposHome?.destacadoHome || 'ninguno',
       ordenDestacado: parseInt(post.camposHome?.ordenDestacado) || 99,
@@ -117,16 +101,13 @@ const allPostsFormatted = wpPosts.length > 0
     }))
   : localPosts;
 
-// Set para controlar IDs usados y garantizar NINGÚN DUPLICADO en la portada
 const usedPostIds = new Set<string>();
 
-// A. LOGICA INTELIGENTE DE POSTEOS DESTACADOS (POST 1 a POST 5)
-// Resuelve: Repetición de orden de redactores (toma el más reciente) y huecos de orden faltantes.
-const candidatosDestacados = allPostsFormatted.filter(p => p.destacadoHome === 'destacados');
+// A. LOGICA DE DESTACADOS (POST 1 a POST 5)
+const candidatosDestacados = allPostsFormatted.filter((p: any) => p.destacadoHome === 'destacados');
 
 function obtenerDestacadoPorOrden(orden: number) {
-  // Como allPostsFormatted está ordenado por DATE DESC, .find toma la primera (más reciente)
-  const encontrado = candidatosDestacados.find(p => p.ordenDestacado === orden && !usedPostIds.has(p.id));
+  const encontrado = candidatosDestacados.find((p: any) => p.ordenDestacado === orden && !usedPostIds.has(p.id));
   if (encontrado) {
     usedPostIds.add(encontrado.id);
     return encontrado;
@@ -140,11 +121,10 @@ let post3 = obtenerDestacadoPorOrden(3);
 let post4 = obtenerDestacadoPorOrden(4);
 let post5 = obtenerDestacadoPorOrden(5);
 
-// Recuperación de emergencia: Rellenar con las siguientes noticias más recientes si faltó algún número (1-5)
 const arrayDestacados = [post1, post2, post3, post4, post5];
 const destacadosFinales = arrayDestacados.map(post => {
   if (post) return post;
-  const relleno = allPostsFormatted.find(p => !usedPostIds.has(p.id));
+  const relleno = allPostsFormatted.find((p: any) => !usedPostIds.has(p.id));
   if (relleno) {
     usedPostIds.add(relleno.id);
     return relleno;
@@ -152,41 +132,46 @@ const destacadosFinales = arrayDestacados.map(post => {
   return null;
 }).filter(Boolean);
 
-// Re-asignación garantizada sin vacíos
 post1 = destacadosFinales[0] || allPostsFormatted[0];
 post2 = destacadosFinales[1] || allPostsFormatted[1];
 post3 = destacadosFinales[2] || allPostsFormatted[2];
 post4 = destacadosFinales[3] || allPostsFormatted[3];
 post5 = destacadosFinales[4] || allPostsFormatted[4];
 
-// B. SECCIÓN "EL PERSONAJE" (Últimos 5 marcados como esPersonaje)
+if (post1) usedPostIds.add(post1.id);
+if (post2) usedPostIds.add(post2.id);
+if (post3) usedPostIds.add(post3.id);
+if (post4) usedPostIds.add(post4.id);
+if (post5) usedPostIds.add(post5.id);
+
+// B. SECCIÓN "EL PERSONAJE"
 const personajesList = allPostsFormatted
-  .filter(p => p.esPersonaje)
+  .filter((p: any) => p.esPersonaje)
   .slice(0, 5)
-  .map(p => ({
+  .map((p: any) => ({
     id: p.id,
     nombre: p.title,
     slug: p.slug,
     foto: p.featuredImage
   }));
 
-// C. SECCIÓN "APOYO A LA COMUNIDAD" (Últimos 5 marcados como apoyoComunidad)
+// C. SECCIÓN "APOYO A LA COMUNIDAD"
 const apoyoComunidadList = allPostsFormatted
-  .filter(p => p.apoyoComunidad)
+  .filter((p: any) => p.apoyoComunidad)
   .slice(0, 5);
 
-// D. SECCIÓN "ACTUALIDAD" (Siguientes noticias recientes excluyendo las ya usadas en Destacados)
+// D. SECCIÓN "ACTUALIDAD"
 const actualidadPosts = allPostsFormatted
-  .filter(p => !usedPostIds.has(p.id) && !p.esPersonaje)
+  .filter((p: any) => !usedPostIds.has(p.id) && !p.esPersonaje)
   .slice(0, 12);
 
-// E. SECCIÓN VIDEOS DE REDES SOCIALES
+// E. VIDEOS DE REDES SOCIALES
 const socialVideos = allPostsFormatted
-  .filter(p => p.videoYoutube || p.videoTiktok || p.videoInstagram)
+  .filter((p: any) => p.videoYoutube || p.videoTiktok || p.videoInstagram)
   .slice(0, 6);
 
-// F. POSTS SECUNDARIOS DERECHOS/INFERIORES (Post 6 al 12)
-const remainingPosts = allPostsFormatted.filter(p => !usedPostIds.has(p.id));
+// F. POSTS SECUNDARIOS (Post 6 al 12)
+const remainingPosts = allPostsFormatted.filter((p: any) => !usedPostIds.has(p.id));
 const post6 = remainingPosts[0] || null;
 const post7 = remainingPosts[1] || null;
 const post8 = remainingPosts[2] || null;
@@ -195,91 +180,43 @@ const post10 = remainingPosts[4] || null;
 const post11 = remainingPosts[5] || null;
 const post12 = remainingPosts[6] || null;
 
-// Configuración de Banners
-const banner1 = {
-  src: pageConfig?.banner1Imagen?.sourceUrl || 'https://via.placeholder.com/1200x90/3b82f6/ffffff?text=Banner+1+(Google+AdSense+728x90+/+970x90)',
-  isSticky: pageConfig?.banner1IsSticky || false
-};
-const banner2 = pageConfig?.banner2Imagen?.sourceUrl || 'https://via.placeholder.com/1200x120/10b981/ffffff?text=Banner+2+Ancho+Completo';
-const banner3 = pageConfig?.banner3Imagen?.sourceUrl || null;
+// Banners dinámicos de WordPress ACF (con respaldos si están vacíos)
+const banner1Src = pageConfig?.banner1Imagen?.sourceUrl || '';
+const banner1Sticky = pageConfig?.banner1IsSticky || false;
+const banner2Src = pageConfig?.banner2Imagen?.sourceUrl || '';
+const banner3Src = pageConfig?.banner3Imagen?.sourceUrl || '';
 ---
 
 <Layout title="Realidades - Portal de Noticias">
+  
   {/* BANNER 1: SUPER CABECERA */}
-  <div class={`w-full bg-gray-100 flex justify-center py-2 z-50 ${banner1.isSticky ? 'sticky top-0 shadow-md' : ''}`}>
-    <div class="w-[90%] max-w-[1400px] flex justify-center items-center min-h-[90px] overflow-hidden">
-      <img src={banner1.src} alt="Publicidad Cabecera" class="max-h-[90px] object-contain" />
+  {banner1Src && (
+    <div class={`w-full bg-white flex justify-center py-2 z-50 shadow-sm ${banner1Sticky ? 'sticky top-0' : ''}`}>
+      <div class="w-[90%] max-w-[1400px] flex justify-center items-center overflow-hidden">
+        <img src={banner1Src} alt="Publicidad Cabecera" class="max-h-[100px] object-contain" />
+      </div>
     </div>
-  </div>
+  )}
 
   <main class="w-[90%] max-w-[1400px] mx-auto my-6 font-sans">
     
     {/* ====================================================================
-        MODO MÓVIL (< 590px): Flujo Vertical Secuencial Estricto (Post 1 -> 5)
+        MALLA ASIMÉTRICA PRINCIPAL (Escritorio / Tablet)
         ==================================================================== */}
-    <div class="block min-[590px]:hidden space-y-6">
-      {/* Posts Destacados en Orden Numérico Estricto */}
-      {[post1, post2, post3, post4, post5].map((post, idx) => post && (
-        <div class="border-b pb-4">
-          <span class="text-xs font-bold text-red-600 uppercase">Post {idx + 1}</span>
-          <NewsCard {...post} />
-        </div>
-      ))}
-
-      {/* Carruseles interactivos en Móvil */}
-      <PersonajeCarousel personajes={personajesList} client:visible />
-      <ActualidadCarousel posts={actualidadPosts} client:visible />
-      <ApoyoComunidadCarousel posts={apoyoComunidadList} client:visible />
-
-      {/* Banner 2 Ancho Completo */}
-      <div class="w-full my-4 flex justify-center">
-        <img src={banner2} alt="Banner 2" class="w-full object-cover rounded-lg" />
-      </div>
-
-      {/* Flujo de Posts Secundarios */}
-      {post6 && <NewsCard {...post6} />}
-      {post7 && <NewsCard {...post7} />}
-      {post8 && <NewsCard {...post8} />}
-
-      {/* Videos Redes */}
-      <SocialVideoCarousel videos={socialVideos} client:visible />
-
-      {post9 && <NewsCard {...post9} />}
-      {post10 && <NewsCard {...post10} />}
-      {post11 && <NewsCard {...post11} />}
-      {post12 && <NewsCard {...post12} />}
-    </div>
-
-
-    {/* ====================================================================
-        MODO DESK/TABLET (>= 590px): Malla Asimétrica de 3 Columnas
-        Columnas: [25% | 50% | 25%]
-        ==================================================================== */}
-    <div class="hidden min-[590px]:grid grid-cols-1 md:grid-cols-12 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
       
-      {/* ----------------- COLUMNA IZQUIERDA (3 de 12 = 25%) ----------------- */}
+      {/* Columna Izquierda (25%) - Post 2 y Post 3 */}
       <div class="md:col-span-3 flex flex-col gap-6">
-        {post2 && (
-          <div class="relative">
-            <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 2</span>
-            <NewsCard {...post2} />
-          </div>
-        )}
-        {post3 && (
-          <div class="relative">
-            <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 3</span>
-            <NewsCard {...post3} />
-          </div>
-        )}
+        {post2 && <NewsCard {...post2} />}
+        {post3 && <NewsCard {...post3} />}
       </div>
 
-      {/* ----------------- COLUMNA CENTRAL (6 de 12 = 50%) ----------------- */}
+      {/* Columna Central (50%) - Post 1 (Destacado Principal) */}
       <div class="md:col-span-6 flex flex-col gap-6">
         {post1 && (
-          <div class="relative bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-            <span class="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 1 (DESTACADO PRINCIPAL)</span>
+          <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
             <a href={`/${post1.slug}`} class="block group">
-              <div class="relative h-72 md:h-96 w-full overflow-hidden">
+              <div class="relative h-72 md:h-96 w-full overflow-hidden bg-gray-100">
                 <img src={post1.featuredImage} alt={post1.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                 {post1.videoYoutube && (
                   <span class="absolute bottom-3 left-3 bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow">
@@ -299,39 +236,25 @@ const banner3 = pageConfig?.banner3Imagen?.sourceUrl || null;
         )}
       </div>
 
-      {/* ----------------- COLUMNA DERECHA (3 de 12 = 25%) ----------------- */}
+      {/* Columna Derecha (25%) - Banner 3 o Post 4, y Post 5 */}
       <div class="md:col-span-3 flex flex-col gap-6">
-        {/* Banner 3 / Posición del Post 4 Reemplazado */}
-        {banner3 ? (
-          <div class="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden min-h-[250px] flex items-center justify-center relative">
-            <span class="absolute top-1 right-1 bg-gray-200 text-[9px] text-gray-500 px-1 rounded">BANNER 3</span>
-            <img src={banner3} alt="Publicidad Lateral" class="w-full h-full object-cover" />
+        {banner3Src ? (
+          <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 flex items-center justify-center">
+            <img src={banner3Src} alt="Publicidad Lateral" class="w-full h-full object-cover" />
           </div>
         ) : (
-          post4 && (
-            <div class="relative">
-              <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 4</span>
-              <NewsCard {...post4} />
-            </div>
-          )
+          post4 && <NewsCard {...post4} />
         )}
-
-        {post5 && (
-          <div class="relative">
-            <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 5</span>
-            <NewsCard {...post5} />
-          </div>
-        )}
+        {post5 && <NewsCard {...post5} />}
       </div>
 
     </div>
 
 
     {/* ====================================================================
-        SECCIONES INTERMEDIAS EN TRÍPTICO (DESKTOP)
-        "El Personaje" | "Actualidad" | "Apoyo a la Comunidad"
+        SECCIONES INTERMEDIAS EN TRÍPTICO: Personaje | Actualidad | Comunidad
         ==================================================================== */}
-    <div class="hidden min-[590px]:grid grid-cols-1 md:grid-cols-12 gap-6 my-10 items-start">
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 my-8 items-start">
       <div class="md:col-span-3">
         <PersonajeCarousel personajes={personajesList} client:visible />
       </div>
@@ -345,42 +268,37 @@ const banner3 = pageConfig?.banner3Imagen?.sourceUrl || null;
 
 
     {/* ====================================================================
-        BANNER 2: ANCHO COMPLETO TRAS SECCIONES
+        BANNER 2: ANCHO COMPLETO
         ==================================================================== */}
-    <div class="w-full my-8 flex justify-center items-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50 min-h-[100px]">
-      <img src={banner2} alt="Banner 2 Publicidad" class="w-full max-h-[120px] object-cover" />
-    </div>
+    {banner2Src && (
+      <div class="w-full my-8 flex justify-center items-center overflow-hidden rounded-xl bg-gray-50">
+        <img src={banner2Src} alt="Banner Publicidad" class="w-full max-h-[120px] object-cover" />
+      </div>
+    )}
 
 
     {/* ====================================================================
-        GRID INFERIOR DE NOTICIAS SECUNDARIAS (POST 6 AL 12 + VIDEOS)
+        GRID INFERIOR DE NOTICIAS SECUNDARIAS (Post 6 al 12 + Videos Sociales)
         ==================================================================== */}
-    <div class="hidden min-[590px]:grid grid-cols-1 md:grid-cols-12 gap-6 my-8">
+    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 my-8">
       
-      {/* Columna Izquierda Inferior (3 de 12) */}
       <div class="md:col-span-3 flex flex-col gap-6">
-        {/* Banner o Post 7 */}
-        <div class="bg-amber-400 text-slate-900 font-bold p-6 rounded-xl min-h-[280px] flex items-center justify-center text-center">
-          <span>POST 7 (336x300 Ad Space)</span>
+        <div class="bg-amber-400 text-slate-900 font-bold p-6 rounded-xl min-h-[280px] flex items-center justify-center text-center shadow-sm">
+          <span>ESPACIO PUBLICITARIO (336x300)</span>
         </div>
         {post8 && <NewsCard {...post8} />}
         {post9 && <NewsCard {...post9} />}
       </div>
 
-      {/* Columna Central Inferior (6 de 12) */}
       <div class="md:col-span-6 flex flex-col gap-6">
         {post6 && (
           <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <span class="text-xs font-bold text-gray-400">POST 6</span>
             <NewsCard {...post6} />
           </div>
         )}
-        
-        {/* Carrusel de Videos Sociales */}
         <SocialVideoCarousel videos={socialVideos} client:visible />
       </div>
 
-      {/* Columna Derecha Inferior (3 de 12) */}
       <div class="md:col-span-3 flex flex-col gap-6">
         {post10 && <NewsCard {...post10} />}
         {post11 && <NewsCard {...post11} />}
