@@ -1,37 +1,67 @@
 ---
 // src/pages/index.astro
 import Layout from '../layouts/Layout.astro';
-import Hero from '../components/Hero.astro';
 import NewsCard from '../components/NewsCard.astro';
 
-// Importamos tus posts locales de respaldo por seguridad
+// Importamos los componentes interactivos de React (Islas)
+import PersonajeCarousel from '../components/PersonajeCarousel.jsx';
+import ActualidadCarousel from '../components/ActualidadCarousel.jsx';
+import ApoyoComunidadCarousel from '../components/ApoyoComunidadCarousel.jsx';
+import SocialVideoCarousel from '../components/SocialVideoCarousel.jsx';
+
+// Datos locales de respaldo por resguardo en caso de caída del CMS
 import { posts as localPosts } from '../data/posts';
 
-let formattedPosts = [];
+let wpPosts: any[] = [];
+let pageConfig: any = null;
 
 try {
-  // Conectamos con tu WordPress de pruebas usando la variable de entorno
   const response = await fetch(import.meta.env.WORDPRESS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       query: `
-        query GetLatestPosts {
-          posts(first: 10, where: { orderby: { field: DATE, order: DESC } }) {
+        query GetCompleteHomeData {
+          # 1. Banners Globales desde la página de configuración
+          page(id: "configuracion-banners", idType: URI) {
+            bannersGlobales {
+              banner1Imagen { sourceUrl }
+              banner1IsSticky
+              banner2Imagen { sourceUrl }
+              banner3Imagen { sourceUrl }
+              banner3Posicion
+              banner4Imagen { sourceUrl }
+              banner4Posicion
+            }
+          }
+          
+          # 2. Banners y logos globales alternativos/auspiciadores
+          pageGlobal: page(id: "Configuración Home", idType: URI) {
+            bannersYAuspiciadoresGlobales {
+              logo1 { sourceUrl }
+              logo2 { sourceUrl }
+              logo3 { sourceUrl }
+              logo4 { sourceUrl }
+              logo5 { sourceUrl }
+            }
+          }
+
+          # 3. Listado de Noticias (primeras 50 para clasificar correctamente)
+          posts(first: 50, where: { orderby: { field: DATE, order: DESC } }) {
             nodes {
               id
               title
-              excerpt
-              date
               slug
+              date
+              excerpt
               featuredImage {
                 node {
                   sourceUrl
                 }
               }
               camposMultimedia {
-                urlVideoTiktok
                 urlVideoYoutube
+                urlVideoTiktok
                 urlVideoInstagram
               }
               actorsSociales {
@@ -39,6 +69,13 @@ try {
                   name
                   slug
                 }
+              }
+              camposHome {
+                insigniaNota
+                destacadoHome
+                ordenDestacado
+                esPersonaje
+                apoyoComunidad
               }
             }
           }
@@ -48,99 +85,309 @@ try {
   });
 
   const json = await response.json();
-  const wpPosts = json.data?.posts?.nodes || [];
+  wpPosts = json.data?.posts?.nodes || [];
+  pageConfig = json.data?.page?.bannersGlobales || null;
+} catch (error) {
+  console.error("Error al conectar con la API de WordPress:", error);
+  wpPosts = [];
+}
 
-  if (wpPosts.length > 0) {
-    // Si WordPress responde con entradas, estructuramos los datos para tus componentes
-    formattedPosts = wpPosts.map((post: any) => ({
+// --------------------------------------------------------------------------
+// PROCESAMIENTO Y DEPURACIÓN DE DATOS
+// --------------------------------------------------------------------------
+
+// Mapeo general estandarizado
+const allPostsFormatted = wpPosts.length > 0 
+  ? wpPosts.map((post: any) => ({
+      id: post.id,
       title: post.title,
       slug: post.slug,
       date: post.date,
-      excerpt: post.excerpt ? post.excerpt.replace(/<[^>]*>/g, '') : '', 
+      excerpt: post.excerpt ? post.excerpt.replace(/<[^>]*>/g, '') : '',
       featuredImage: post.featuredImage?.node?.sourceUrl || 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=1200',
       videoYoutube: post.camposMultimedia?.urlVideoYoutube || '',
-      actoresSociales: post.actorsSociales?.nodes?.map((node: any) => node.name?.trim()).filter(Boolean) || []
-    }));
-  } else {
-    formattedPosts = localPosts;
+      videoTiktok: post.camposMultimedia?.urlVideoTiktok || '',
+      videoInstagram: post.camposMultimedia?.urlVideoInstagram || '',
+      actoresSociales: post.actorsSociales?.nodes?.map((node: any) => node.name?.trim()).filter(Boolean) || [],
+      insignia: post.camposHome?.insigniaNota || '',
+      destacadoHome: post.camposHome?.destacadoHome || 'ninguno',
+      ordenDestacado: parseInt(post.camposHome?.ordenDestacado) || 99,
+      esPersonaje: post.camposHome?.esPersonaje || false,
+      apoyoComunidad: post.camposHome?.apoyoComunidad || false
+    }))
+  : localPosts;
+
+// Set para controlar IDs usados y garantizar NINGÚN DUPLICADO en la portada
+const usedPostIds = new Set<string>();
+
+// A. LOGICA INTELIGENTE DE POSTEOS DESTACADOS (POST 1 a POST 5)
+// Resuelve: Repetición de orden de redactores (toma el más reciente) y huecos de orden faltantes.
+const candidatosDestacados = allPostsFormatted.filter(p => p.destacadoHome === 'destacados');
+
+function obtenerDestacadoPorOrden(orden: number) {
+  // Como allPostsFormatted está ordenado por DATE DESC, .find toma la primera (más reciente)
+  const encontrado = candidatosDestacados.find(p => p.ordenDestacado === orden && !usedPostIds.has(p.id));
+  if (encontrado) {
+    usedPostIds.add(encontrado.id);
+    return encontrado;
   }
-} catch (error) {
-  console.error("Error conectando a WordPress, usando datos locales:", error);
-  formattedPosts = localPosts;
+  return null;
 }
 
-// Clasificamos las noticias para la interfaz
-const featuredPost = formattedPosts[0];
-const gridPosts = formattedPosts.slice(1);
+let post1 = obtenerDestacadoPorOrden(1);
+let post2 = obtenerDestacadoPorOrden(2);
+let post3 = obtenerDestacadoPorOrden(3);
+let post4 = obtenerDestacadoPorOrden(4);
+let post5 = obtenerDestacadoPorOrden(5);
 
-// Configuración o placeholder del banner intercalado en la grilla (33.33% ancho)
-const gridBanner = {
-  image: 'https://placehold.co/600x700/60a5fa/ffffff?text=ancho+33.33%25%0Aalto+=+a+las+noticias',
-  link: '#',
-  title: 'Publicidad destacada'
+// Recuperación de emergencia: Rellenar con las siguientes noticias más recientes si faltó algún número (1-5)
+const arrayDestacados = [post1, post2, post3, post4, post5];
+const destacadosFinales = arrayDestacados.map(post => {
+  if (post) return post;
+  const relleno = allPostsFormatted.find(p => !usedPostIds.has(p.id));
+  if (relleno) {
+    usedPostIds.add(relleno.id);
+    return relleno;
+  }
+  return null;
+}).filter(Boolean);
+
+// Re-asignación garantizada sin vacíos
+post1 = destacadosFinales[0] || allPostsFormatted[0];
+post2 = destacadosFinales[1] || allPostsFormatted[1];
+post3 = destacadosFinales[2] || allPostsFormatted[2];
+post4 = destacadosFinales[3] || allPostsFormatted[3];
+post5 = destacadosFinales[4] || allPostsFormatted[4];
+
+// B. SECCIÓN "EL PERSONAJE" (Últimos 5 marcados como esPersonaje)
+const personajesList = allPostsFormatted
+  .filter(p => p.esPersonaje)
+  .slice(0, 5)
+  .map(p => ({
+    id: p.id,
+    nombre: p.title,
+    slug: p.slug,
+    foto: p.featuredImage
+  }));
+
+// C. SECCIÓN "APOYO A LA COMUNIDAD" (Últimos 5 marcados como apoyoComunidad)
+const apoyoComunidadList = allPostsFormatted
+  .filter(p => p.apoyoComunidad)
+  .slice(0, 5);
+
+// D. SECCIÓN "ACTUALIDAD" (Siguientes noticias recientes excluyendo las ya usadas en Destacados)
+const actualidadPosts = allPostsFormatted
+  .filter(p => !usedPostIds.has(p.id) && !p.esPersonaje)
+  .slice(0, 12);
+
+// E. SECCIÓN VIDEOS DE REDES SOCIALES
+const socialVideos = allPostsFormatted
+  .filter(p => p.videoYoutube || p.videoTiktok || p.videoInstagram)
+  .slice(0, 6);
+
+// F. POSTS SECUNDARIOS DERECHOS/INFERIORES (Post 6 al 12)
+const remainingPosts = allPostsFormatted.filter(p => !usedPostIds.has(p.id));
+const post6 = remainingPosts[0] || null;
+const post7 = remainingPosts[1] || null;
+const post8 = remainingPosts[2] || null;
+const post9 = remainingPosts[3] || null;
+const post10 = remainingPosts[4] || null;
+const post11 = remainingPosts[5] || null;
+const post12 = remainingPosts[6] || null;
+
+// Configuración de Banners
+const banner1 = {
+  src: pageConfig?.banner1Imagen?.sourceUrl || 'https://via.placeholder.com/1200x90/3b82f6/ffffff?text=Banner+1+(Google+AdSense+728x90+/+970x90)',
+  isSticky: pageConfig?.banner1IsSticky || false
 };
-
-// Definimos la posición exacta donde aparecerá el banner en la grilla (0 es primera tarjeta, 1 es la segunda)
-const bannerIndexPosition = 1;
+const banner2 = pageConfig?.banner2Imagen?.sourceUrl || 'https://via.placeholder.com/1200x120/10b981/ffffff?text=Banner+2+Ancho+Completo';
+const banner3 = pageConfig?.banner3Imagen?.sourceUrl || null;
 ---
 
-<Layout title="Realidades - Inicio">
-    <main>
-        {featuredPost && (
-            <Hero
-                title={featuredPost.title}
-                slug={featuredPost.slug}
-                date={featuredPost.date}
-                excerpt={featuredPost.excerpt}
-                featuredImage={featuredPost.featuredImage}
-                actoresSociales={featuredPost.actoresSociales}
-                videoYoutube={featuredPost.videoYoutube}
-            />
+<Layout title="Realidades - Portal de Noticias">
+  {/* BANNER 1: SUPER CABECERA */}
+  <div class={`w-full bg-gray-100 flex justify-center py-2 z-50 ${banner1.isSticky ? 'sticky top-0 shadow-md' : ''}`}>
+    <div class="w-[90%] max-w-[1400px] flex justify-center items-center min-h-[90px] overflow-hidden">
+      <img src={banner1.src} alt="Publicidad Cabecera" class="max-h-[90px] object-contain" />
+    </div>
+  </div>
+
+  <main class="w-[90%] max-w-[1400px] mx-auto my-6 font-sans">
+    
+    {/* ====================================================================
+        MODO MÓVIL (< 590px): Flujo Vertical Secuencial Estricto (Post 1 -> 5)
+        ==================================================================== */}
+    <div class="block min-[590px]:hidden space-y-6">
+      {/* Posts Destacados en Orden Numérico Estricto */}
+      {[post1, post2, post3, post4, post5].map((post, idx) => post && (
+        <div class="border-b pb-4">
+          <span class="text-xs font-bold text-red-600 uppercase">Post {idx + 1}</span>
+          <NewsCard {...post} />
+        </div>
+      ))}
+
+      {/* Carruseles interactivos en Móvil */}
+      <PersonajeCarousel personajes={personajesList} client:visible />
+      <ActualidadCarousel posts={actualidadPosts} client:visible />
+      <ApoyoComunidadCarousel posts={apoyoComunidadList} client:visible />
+
+      {/* Banner 2 Ancho Completo */}
+      <div class="w-full my-4 flex justify-center">
+        <img src={banner2} alt="Banner 2" class="w-full object-cover rounded-lg" />
+      </div>
+
+      {/* Flujo de Posts Secundarios */}
+      {post6 && <NewsCard {...post6} />}
+      {post7 && <NewsCard {...post7} />}
+      {post8 && <NewsCard {...post8} />}
+
+      {/* Videos Redes */}
+      <SocialVideoCarousel videos={socialVideos} client:visible />
+
+      {post9 && <NewsCard {...post9} />}
+      {post10 && <NewsCard {...post10} />}
+      {post11 && <NewsCard {...post11} />}
+      {post12 && <NewsCard {...post12} />}
+    </div>
+
+
+    {/* ====================================================================
+        MODO DESK/TABLET (>= 590px): Malla Asimétrica de 3 Columnas
+        Columnas: [25% | 50% | 25%]
+        ==================================================================== */}
+    <div class="hidden min-[590px]:grid grid-cols-1 md:grid-cols-12 gap-6">
+      
+      {/* ----------------- COLUMNA IZQUIERDA (3 de 12 = 25%) ----------------- */}
+      <div class="md:col-span-3 flex flex-col gap-6">
+        {post2 && (
+          <div class="relative">
+            <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 2</span>
+            <NewsCard {...post2} />
+          </div>
+        )}
+        {post3 && (
+          <div class="relative">
+            <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 3</span>
+            <NewsCard {...post3} />
+          </div>
+        )}
+      </div>
+
+      {/* ----------------- COLUMNA CENTRAL (6 de 12 = 50%) ----------------- */}
+      <div class="md:col-span-6 flex flex-col gap-6">
+        {post1 && (
+          <div class="relative bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+            <span class="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 1 (DESTACADO PRINCIPAL)</span>
+            <a href={`/${post1.slug}`} class="block group">
+              <div class="relative h-72 md:h-96 w-full overflow-hidden">
+                <img src={post1.featuredImage} alt={post1.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                {post1.videoYoutube && (
+                  <span class="absolute bottom-3 left-3 bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow">
+                    ▶ Ver video
+                  </span>
+                )}
+              </div>
+              <div class="p-5">
+                {post1.insignia && <span class="text-xs font-bold uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded">{post1.insignia}</span>}
+                <h1 class="text-xl md:text-2xl font-bold text-gray-900 mt-2 group-hover:text-red-600 transition-colors leading-tight">
+                  {post1.title}
+                </h1>
+                <p class="text-gray-600 text-sm mt-2 line-clamp-3">{post1.excerpt}</p>
+              </div>
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* ----------------- COLUMNA DERECHA (3 de 12 = 25%) ----------------- */}
+      <div class="md:col-span-3 flex flex-col gap-6">
+        {/* Banner 3 / Posición del Post 4 Reemplazado */}
+        {banner3 ? (
+          <div class="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden min-h-[250px] flex items-center justify-center relative">
+            <span class="absolute top-1 right-1 bg-gray-200 text-[9px] text-gray-500 px-1 rounded">BANNER 3</span>
+            <img src={banner3} alt="Publicidad Lateral" class="w-full h-full object-cover" />
+          </div>
+        ) : (
+          post4 && (
+            <div class="relative">
+              <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 4</span>
+              <NewsCard {...post4} />
+            </div>
+          )
         )}
 
-        <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            <div class="mb-8 flex items-center justify-between">
-                <div>
-                    <h2 class="text-2xl font-bold text-gray-900">Ultimas Noticias</h2>
-                    <p class="text-gray-600 mt-1">Mantente informado con las ultimas actualizaciones</p>
-                </div>
-            </div>
+        {post5 && (
+          <div class="relative">
+            <span class="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded z-10">POST 5</span>
+            <NewsCard {...post5} />
+          </div>
+        )}
+      </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {gridPosts.map((post: any, index: number) => {
-                    // Si el índice coincide con la posición deseada, mostramos el banner en lugar de la tarjeta de noticias
-                    if (index === bannerIndexPosition && gridBanner) {
-                        return (
-                            <div class="bg-blue-400 rounded-xl overflow-hidden shadow-sm border border-blue-300 min-h-[380px] flex items-center justify-center hover:shadow-lg transition-shadow duration-300">
-                                <a 
-                                    href={gridBanner.link} 
-                                    target="_blank" 
-                                    rel="sponsored nofollow" 
-                                    class="w-full h-full block group relative"
-                                >
-                                    <img 
-                                        src={gridBanner.image} 
-                                        alt={gridBanner.title} 
-                                        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                    />
-                                </a>
-                            </div>
-                        );
-                    }
+    </div>
 
-                    return (
-                        <NewsCard
-                            title={post.title}
-                            slug={post.slug}
-                            date={post.date}
-                            excerpt={post.excerpt}
-                            featuredImage={post.featuredImage}
-                            actoresSociales={post.actoresSociales}
-                            videoYoutube={post.videoYoutube}
-                        />
-                    );
-                })}
-            </div>
-        </section>
-    </main>
+
+    {/* ====================================================================
+        SECCIONES INTERMEDIAS EN TRÍPTICO (DESKTOP)
+        "El Personaje" | "Actualidad" | "Apoyo a la Comunidad"
+        ==================================================================== */}
+    <div class="hidden min-[590px]:grid grid-cols-1 md:grid-cols-12 gap-6 my-10 items-start">
+      <div class="md:col-span-3">
+        <PersonajeCarousel personajes={personajesList} client:visible />
+      </div>
+      <div class="md:col-span-6">
+        <ActualidadCarousel posts={actualidadPosts} client:visible />
+      </div>
+      <div class="md:col-span-3">
+        <ApoyoComunidadCarousel posts={apoyoComunidadList} client:visible />
+      </div>
+    </div>
+
+
+    {/* ====================================================================
+        BANNER 2: ANCHO COMPLETO TRAS SECCIONES
+        ==================================================================== */}
+    <div class="w-full my-8 flex justify-center items-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50 min-h-[100px]">
+      <img src={banner2} alt="Banner 2 Publicidad" class="w-full max-h-[120px] object-cover" />
+    </div>
+
+
+    {/* ====================================================================
+        GRID INFERIOR DE NOTICIAS SECUNDARIAS (POST 6 AL 12 + VIDEOS)
+        ==================================================================== */}
+    <div class="hidden min-[590px]:grid grid-cols-1 md:grid-cols-12 gap-6 my-8">
+      
+      {/* Columna Izquierda Inferior (3 de 12) */}
+      <div class="md:col-span-3 flex flex-col gap-6">
+        {/* Banner o Post 7 */}
+        <div class="bg-amber-400 text-slate-900 font-bold p-6 rounded-xl min-h-[280px] flex items-center justify-center text-center">
+          <span>POST 7 (336x300 Ad Space)</span>
+        </div>
+        {post8 && <NewsCard {...post8} />}
+        {post9 && <NewsCard {...post9} />}
+      </div>
+
+      {/* Columna Central Inferior (6 de 12) */}
+      <div class="md:col-span-6 flex flex-col gap-6">
+        {post6 && (
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <span class="text-xs font-bold text-gray-400">POST 6</span>
+            <NewsCard {...post6} />
+          </div>
+        )}
+        
+        {/* Carrusel de Videos Sociales */}
+        <SocialVideoCarousel videos={socialVideos} client:visible />
+      </div>
+
+      {/* Columna Derecha Inferior (3 de 12) */}
+      <div class="md:col-span-3 flex flex-col gap-6">
+        {post10 && <NewsCard {...post10} />}
+        {post11 && <NewsCard {...post11} />}
+        {post12 && <NewsCard {...post12} />}
+      </div>
+
+    </div>
+
+  </main>
 </Layout>
