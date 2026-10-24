@@ -10,121 +10,215 @@ import SocialVideoCarousel from '../components/SocialVideoCarousel.jsx';
 
 import { posts as localPosts } from '../data/posts';
 
-let wpPosts: any[] = [];
-let bannerData: any = null;
-
-// Variables de diagnóstico
-let debugError: string | null = null;
-let graphqlErrors: any = null;
-
+// ---------------------------------------------------------------------------
+// CONFIGURACIÓN
+// ---------------------------------------------------------------------------
 const apiUrl = import.meta.env.WORDPRESS_API_URL || 'https://realidades.lastorres308.com/graphql';
 
-try {
+// ID de la página "Configuración Banners" en WordPress (post=106 en la URL del editor)
+const BANNERS_PAGE_ID = '106';
+
+// Pon en false cuando todo funcione para ocultar el recuadro rojo de diagnóstico
+const MOSTRAR_DIAGNOSTICO = true;
+
+// ---------------------------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------------------------
+const diagnostico: string[] = [];
+let graphqlErrors: any[] = [];
+
+async function gql(query: string): Promise<any> {
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      query: `
-        query GetCompleteHomeData {
-          # 1. Banners y Auspiciadores
-          page(id: "configuracion-banners", idType: URI) {
-            bannersGlobales {
-              banner1Imagen { sourceUrl }
-              banner1IsSticky
-              banner2Imagen { sourceUrl }
-              banner3Imagen { sourceUrl }
-              logo1 { sourceUrl }
-              logo2 { sourceUrl }
-              logo3 { sourceUrl }
-              logo4 { sourceUrl }
-              logo5 { sourceUrl }
-              logo6 { sourceUrl }
-            }
-          }
-
-          # 2. Entradas reales de WordPress
-          posts(first: 50, where: { orderby: { field: DATE, order: DESC } }) {
-            nodes {
-              id
-              title
-              slug
-              date
-              excerpt
-              featuredImage {
-                node {
-                  sourceUrl
-                }
-              }
-              camposMultimedia {
-                urlVideoYoutube
-                urlVideoTiktok
-                urlVideoInstagram
-              }
-              actorsSociales {
-                nodes {
-                  name
-                }
-              }
-              camposHome {
-                insigniaNota
-                destacadoHome
-                ordenDestacado
-                esPersonaje
-                apoyoComunidad
-              }
-            }
-          }
-        }
-      `
-    })
+    body: JSON.stringify({ query })
   });
-
   if (!response.ok) {
-    debugError = `Error HTTP ${response.status}: ${response.statusText}`;
-  } else {
-    const json = await response.json();
-
-    if (json.errors) {
-      graphqlErrors = json.errors;
-      debugError = `Error de GraphQL devuelto por WordPress (${json.errors.length} errores).`;
-    }
-
-    wpPosts = json.data?.posts?.nodes || [];
-    bannerData = json.data?.page?.bannersGlobales || null;
+    throw new Error(`HTTP ${response.status} ${response.statusText}`);
   }
-} catch (error: any) {
-  debugError = `Error de conexión/red: ${error.message || String(error)}`;
-  wpPosts = [];
+  return response.json();
 }
 
-// PROCESAMIENTO MAPPED
-const allPostsFormatted = wpPosts.length > 0 
+function limpiarHtml(texto: string = ''): string {
+  return texto
+    .replace(/<[^>]*>/g, '')
+    .replace(/&hellip;|&#8230;/g, '…')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&#8211;|&ndash;/g, '–')
+    .replace(/&#8217;|&rsquo;/g, '’')
+    .replace(/&#8220;|&#8221;|&ldquo;|&rdquo;/g, '"')
+    .replace(/\[&hellip;\]|\[…\]/g, '…')
+    .trim();
+}
+
+// Un Select de ACF puede llegar como string o como array de strings
+function valorSelect(v: any): string {
+  if (Array.isArray(v)) return String(v[0] ?? '');
+  return v == null ? '' : String(v);
+}
+
+// ---------------------------------------------------------------------------
+// CONSULTA 1: ENTRADAS (separada para que un error en banners no la tumbe)
+// ---------------------------------------------------------------------------
+const QUERY_POSTS = `
+  query GetPosts {
+    posts(first: 50, where: { orderby: { field: DATE, order: DESC } }) {
+      nodes {
+        id
+        title
+        slug
+        date
+        excerpt
+        featuredImage { node { sourceUrl } }
+        camposMultimedia {
+          urlVideoYoutube
+          urlVideoTiktok
+          urlVideoInstagram
+        }
+        actorsSociales { nodes { name } }
+        camposHome {
+          insigniaNota
+          destacadoHome
+          ordenDestacado
+          esPersonaje
+          apoyoComunidad
+        }
+      }
+    }
+  }
+`;
+
+// ---------------------------------------------------------------------------
+// CONSULTA 2: BANNERS Y AUSPICIADORES
+// Los campos Image de ACF devuelven una "conexión": la URL está en .node.sourceUrl
+// ---------------------------------------------------------------------------
+const QUERY_BANNERS = `
+  query GetBanners {
+    page(id: "${BANNERS_PAGE_ID}", idType: DATABASE_ID) {
+      bannersGlobales {
+        banner1Imagen { node { sourceUrl } }
+        banner1Sticky
+        banner2Imagen { node { sourceUrl } }
+        banner3Imagen { node { sourceUrl } }
+        banner3Posicion
+        banner4Imagen { node { sourceUrl } }
+        banner4Posicion
+        logo1 { node { sourceUrl } }
+        logo2 { node { sourceUrl } }
+        logo3 { node { sourceUrl } }
+        logo4 { node { sourceUrl } }
+        logo5 { node { sourceUrl } }
+        logo6 { node { sourceUrl } }
+      }
+    }
+  }
+`;
+
+let wpPosts: any[] = [];
+let bannerData: any = null;
+
+try {
+  const json = await gql(QUERY_POSTS);
+  if (json.errors) {
+    graphqlErrors.push(...json.errors);
+    diagnostico.push(`ENTRADAS: GraphQL devolvió ${json.errors.length} error(es).`);
+  }
+  wpPosts = json.data?.posts?.nodes || [];
+  if (wpPosts.length === 0 && !json.errors) {
+    diagnostico.push('ENTRADAS: la API respondió bien pero devolvió 0 entradas (¿están publicadas?).');
+  }
+} catch (error: any) {
+  diagnostico.push(`ENTRADAS: error de conexión/red → ${error.message || String(error)}`);
+}
+
+try {
+  const json = await gql(QUERY_BANNERS);
+  if (json.errors) {
+    graphqlErrors.push(...json.errors);
+    diagnostico.push(`BANNERS: GraphQL devolvió ${json.errors.length} error(es).`);
+  }
+  bannerData = json.data?.page?.bannersGlobales || null;
+  if (!bannerData && !json.errors) {
+    diagnostico.push(`BANNERS: no se encontró la página con ID ${BANNERS_PAGE_ID} o no tiene campos.`);
+  }
+} catch (error: any) {
+  diagnostico.push(`BANNERS: error de conexión/red → ${error.message || String(error)}`);
+}
+
+const usandoRespaldo = wpPosts.length === 0;
+if (usandoRespaldo) {
+  diagnostico.push('Se están mostrando las entradas de RESPALDO (localPosts), no las de WordPress.');
+}
+
+console.log('[WP]', {
+  apiUrl,
+  posts: wpPosts.length,
+  banners: !!bannerData,
+  banner3Posicion: bannerData?.banner3Posicion,
+  banner4Posicion: bannerData?.banner4Posicion,
+  errores: graphqlErrors.length
+});
+
+// ---------------------------------------------------------------------------
+// PROCESAMIENTO DE ENTRADAS
+// ---------------------------------------------------------------------------
+const respaldoFormateado = localPosts.map((p: any) => ({
+  id: String(p.id),
+  title: p.title,
+  slug: p.slug,
+  date: p.date,
+  excerpt: p.excerpt,
+  featuredImage: p.featuredImage,
+  videoYoutube: p.videoYoutube || '',
+  videoTiktok: '',
+  videoInstagram: '',
+  // El respaldo trae [{ name }]; NewsCard espera strings → se normaliza aquí
+  actoresSociales: (p.actoresSociales || [])
+    .map((a: any) => (typeof a === 'string' ? a : a?.name))
+    .filter(Boolean),
+  insignia: '',
+  destacadoHome: 'ninguno',
+  ordenDestacado: 99,
+  esPersonaje: false,
+  apoyoComunidad: false
+}));
+
+const allPostsFormatted: any[] = !usandoRespaldo
   ? wpPosts.map((post: any) => ({
-      id: post.id,
-      title: post.title,
+      id: String(post.id),
+      title: limpiarHtml(post.title),
       slug: post.slug,
       date: post.date,
-      excerpt: post.excerpt ? post.excerpt.replace(/<[^>]*>/g, '') : '',
-      featuredImage: post.featuredImage?.node?.sourceUrl || 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=1200',
+      excerpt: limpiarHtml(post.excerpt),
+      featuredImage:
+        post.featuredImage?.node?.sourceUrl ||
+        'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=1200',
       videoYoutube: post.camposMultimedia?.urlVideoYoutube || '',
       videoTiktok: post.camposMultimedia?.urlVideoTiktok || '',
       videoInstagram: post.camposMultimedia?.urlVideoInstagram || '',
-      actoresSociales: post.actorsSociales?.nodes?.map((n: any) => (typeof n === 'string' ? n : n?.name)).filter(Boolean) || [],
+      actoresSociales: (post.actorsSociales?.nodes || [])
+        .map((n: any) => (typeof n === 'string' ? n : n?.name))
+        .filter(Boolean),
       insignia: post.camposHome?.insigniaNota || '',
-      destacadoHome: post.camposHome?.destacadoHome || 'ninguno',
+      destacadoHome: valorSelect(post.camposHome?.destacadoHome) || 'ninguno',
       ordenDestacado: parseInt(post.camposHome?.ordenDestacado) || 99,
-      esPersonaje: Boolean(post.camposHome?.es_personaje || post.camposHome?.esPersonaje),
-      apoyoComunidad: Boolean(post.camposHome?.apoyo_comunidad || post.camposHome?.apoyoComunidad)
+      esPersonaje: Boolean(post.camposHome?.esPersonaje),
+      apoyoComunidad: Boolean(post.camposHome?.apoyoComunidad)
     }))
-  : localPosts;
+  : respaldoFormateado;
 
+// ---------------------------------------------------------------------------
+// DESTACADOS (1 A 5)
+// ---------------------------------------------------------------------------
 const usedPostIds = new Set<string>();
 
-// FILTRADO DE DESTACADOS (1 A 5)
 const candidatosDestacados = allPostsFormatted.filter((p: any) => p.destacadoHome === 'destacados');
 
 function obtenerDestacadoPorOrden(orden: number) {
-  const encontrado = candidatosDestacados.find((p: any) => p.ordenDestacado === orden && !usedPostIds.has(p.id));
+  const encontrado = candidatosDestacados.find(
+    (p: any) => p.ordenDestacado === orden && !usedPostIds.has(p.id)
+  );
   if (encontrado) {
     usedPostIds.add(encontrado.id);
     return encontrado;
@@ -132,36 +226,22 @@ function obtenerDestacadoPorOrden(orden: number) {
   return null;
 }
 
-let post1 = obtenerDestacadoPorOrden(1);
-let post2 = obtenerDestacadoPorOrden(2);
-let post3 = obtenerDestacadoPorOrden(3);
-let post4 = obtenerDestacadoPorOrden(4);
-let post5 = obtenerDestacadoPorOrden(5);
+const slots = [1, 2, 3, 4, 5].map((n) => obtenerDestacadoPorOrden(n));
 
-const arrayDestacados = [post1, post2, post3, post4, post5];
-const destacadosFinales = arrayDestacados.map(post => {
-  if (post) return post;
+// Los espacios sin destacado se rellenan con las entradas más recientes que sobren
+const [post1, post2, post3, post4, post5] = slots.map((slot) => {
+  if (slot) return slot;
   const relleno = allPostsFormatted.find((p: any) => !usedPostIds.has(p.id));
   if (relleno) {
     usedPostIds.add(relleno.id);
     return relleno;
   }
   return null;
-}).filter(Boolean);
+});
 
-post1 = destacadosFinales[0] || allPostsFormatted[0];
-post2 = destacadosFinales[1] || allPostsFormatted[1];
-post3 = destacadosFinales[2] || allPostsFormatted[2];
-post4 = destacadosFinales[3] || allPostsFormatted[3];
-post5 = destacadosFinales[4] || allPostsFormatted[4];
-
-if (post1) usedPostIds.add(post1.id);
-if (post2) usedPostIds.add(post2.id);
-if (post3) usedPostIds.add(post3.id);
-if (post4) usedPostIds.add(post4.id);
-if (post5) usedPostIds.add(post5.id);
-
+// ---------------------------------------------------------------------------
 // LISTAS DE CARRUSELES
+// ---------------------------------------------------------------------------
 const personajesList = allPostsFormatted
   .filter((p: any) => p.esPersonaje)
   .slice(0, 5)
@@ -172,9 +252,7 @@ const personajesList = allPostsFormatted
     foto: p.featuredImage
   }));
 
-const apoyoComunidadList = allPostsFormatted
-  .filter((p: any) => p.apoyoComunidad)
-  .slice(0, 5);
+const apoyoComunidadList = allPostsFormatted.filter((p: any) => p.apoyoComunidad).slice(0, 5);
 
 const actualidadPosts = allPostsFormatted
   .filter((p: any) => !usedPostIds.has(p.id) && !p.esPersonaje)
@@ -192,32 +270,38 @@ const post10 = remainingPosts[3] || null;
 const post11 = remainingPosts[4] || null;
 const post12 = remainingPosts[5] || null;
 
-// EXTRACCIÓN DE BANNERS REALES
-const banner1Src = bannerData?.banner1Imagen?.sourceUrl || bannerData?.banner1_imagen?.sourceUrl || '';
-const banner1Sticky = Boolean(bannerData?.banner1IsSticky || bannerData?.banner1_is_sticky);
-const banner2Src = bannerData?.banner2Imagen?.sourceUrl || bannerData?.banner2_imagen?.sourceUrl || '';
-const banner3Src = bannerData?.banner3Imagen?.sourceUrl || bannerData?.banner3_imagen?.sourceUrl || '';
+// ---------------------------------------------------------------------------
+// BANNERS Y LOGOS (ACF Image → .node.sourceUrl)
+// ---------------------------------------------------------------------------
+const banner1Src: string = bannerData?.banner1Imagen?.node?.sourceUrl || '';
+const banner1Sticky = Boolean(bannerData?.banner1Sticky);
+const banner2Src: string = bannerData?.banner2Imagen?.node?.sourceUrl || '';
+const banner3Src: string = bannerData?.banner3Imagen?.node?.sourceUrl || '';
+const banner4Src: string = bannerData?.banner4Imagen?.node?.sourceUrl || '';
 
-// LISTA DE LOGOS DE AUSPICIADORES
-const auspiciadoresReales = [
-  bannerData?.logo1?.sourceUrl || bannerData?.logo_1?.sourceUrl,
-  bannerData?.logo2?.sourceUrl || bannerData?.logo_2?.sourceUrl,
-  bannerData?.logo3?.sourceUrl || bannerData?.logo_3?.sourceUrl,
-  bannerData?.logo4?.sourceUrl || bannerData?.logo_4?.sourceUrl,
-  bannerData?.logo5?.sourceUrl || bannerData?.logo_5?.sourceUrl,
-  bannerData?.logo6?.sourceUrl || bannerData?.logo_6?.sourceUrl,
+const auspiciadoresReales: string[] = [
+  bannerData?.logo1?.node?.sourceUrl,
+  bannerData?.logo2?.node?.sourceUrl,
+  bannerData?.logo3?.node?.sourceUrl,
+  bannerData?.logo4?.node?.sourceUrl,
+  bannerData?.logo5?.node?.sourceUrl,
+  bannerData?.logo6?.node?.sourceUrl
 ].filter(Boolean);
+
+const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
 ---
 
 <Layout title="Realidades - Portal de Noticias">
-  
-  {/* ALERTA VISUAL DE DIAGNÓSTICO EN PANTALLA */}
-  {debugError && (
+
+  {/* ALERTA VISUAL DE DIAGNÓSTICO (se apaga con MOSTRAR_DIAGNOSTICO = false) */}
+  {hayDiagnostico && (
     <div class="w-[90%] max-w-[1400px] mx-auto my-4 p-4 bg-red-100 border border-red-400 text-red-800 rounded-lg shadow-sm font-mono text-xs overflow-x-auto">
-      <p class="font-bold text-sm mb-1">⚠️ DIAGNÓSTICO DE CONEXIÓN CON WORDPRESS:</p>
+      <p class="font-bold text-sm mb-1">⚠️ DIAGNÓSTICO DE CONEXIÓN CON WORDPRESS</p>
       <p class="mb-2"><strong>API URL utilizada:</strong> {apiUrl}</p>
-      <p class="mb-2"><strong>Detalle del error:</strong> {debugError}</p>
-      {graphqlErrors && (
+      <ul class="list-disc pl-5 mb-2">
+        {diagnostico.map((d) => <li>{d}</li>)}
+      </ul>
+      {graphqlErrors.length > 0 && (
         <div>
           <strong>Errores devueltos por GraphQL:</strong>
           <pre class="bg-red-50 p-2 mt-1 rounded border border-red-200 text-[11px]">{JSON.stringify(graphqlErrors, null, 2)}</pre>
@@ -228,18 +312,18 @@ const auspiciadoresReales = [
 
   {/* BANNER 1 SUPERIOR DINÁMICO */}
   {banner1Src && (
-    <div class={`w-full bg-white flex justify-center py-2 z-40 transition-all border-b border-gray-100 ${banner1Sticky ? 'sticky top-16 shadow-md' : ''}`}>
+    <div class={`w-full bg-white flex justify-center py-2 z-40 border-b border-gray-100 ${banner1Sticky ? 'sticky top-16 shadow-md' : ''}`}>
       <div class="w-[90%] max-w-[1400px] flex justify-center items-center overflow-hidden">
-        <img src={banner1Src} alt="Publicidad Cabecera" class="max-h-[100px] object-contain" />
+        <img src={banner1Src} alt="Publicidad" class="w-full h-auto max-h-[120px] object-contain" />
       </div>
     </div>
   )}
 
   <main class="w-[90%] max-w-[1400px] mx-auto my-6 font-sans">
-    
+
     {/* MALLA PRINCIPAL DE 3 COLUMNAS */}
     <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
-      
+
       {/* Columna Izquierda (25%) */}
       <div class="md:col-span-3 flex flex-col gap-6">
         {post2 && <NewsCard {...post2} />}
@@ -271,11 +355,11 @@ const auspiciadoresReales = [
         )}
       </div>
 
-      {/* Columna Derecha (25%) */}
+      {/* Columna Derecha (25%): el Banner 3 reemplaza al post4 si está cargado */}
       <div class="md:col-span-3 flex flex-col gap-6">
         {banner3Src ? (
-          <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 flex items-center justify-center border border-gray-100 min-h-[250px]">
-            <img src={banner3Src} alt="Publicidad Lateral" class="w-full h-full object-cover" />
+          <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 border border-gray-100">
+            <img src={banner3Src} alt="Publicidad" class="w-full h-auto object-contain" />
           </div>
         ) : (
           post4 && <NewsCard {...post4} />
@@ -300,27 +384,26 @@ const auspiciadoresReales = [
 
     {/* BANNER 2 ANCHO COMPLETO */}
     {banner2Src && (
-      <div class="w-full my-8 flex justify-center items-center overflow-hidden rounded-xl bg-gray-50">
-        <img src={banner2Src} alt="Banner Publicidad" class="w-full max-h-[120px] object-cover" />
+      <div class="w-full my-8 flex justify-center items-center overflow-hidden rounded-xl bg-white">
+        <img src={banner2Src} alt="Publicidad" class="w-full h-auto object-contain" />
       </div>
     )}
 
     {/* GRID INFERIOR */}
     <div class="grid grid-cols-1 md:grid-cols-12 gap-6 my-8">
       <div class="md:col-span-3 flex flex-col gap-6">
-        <div class="bg-amber-400 text-slate-900 font-bold p-6 rounded-xl min-h-[280px] flex items-center justify-center text-center shadow-sm">
-          <span>ESPACIO PUBLICITARIO (336x300)</span>
-        </div>
+        {/* Banner 4 (336x300): solo se muestra si está cargado en WordPress */}
+        {banner4Src && (
+          <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 border border-gray-100">
+            <img src={banner4Src} alt="Publicidad" class="w-full h-auto object-contain" />
+          </div>
+        )}
         {post8 && <NewsCard {...post8} />}
         {post9 && <NewsCard {...post9} />}
       </div>
 
       <div class="md:col-span-6 flex flex-col gap-6">
-        {post6 && (
-          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <NewsCard {...post6} />
-          </div>
-        )}
+        {post6 && <NewsCard {...post6} />}
         <SocialVideoCarousel videos={socialVideos} client:visible />
       </div>
 
