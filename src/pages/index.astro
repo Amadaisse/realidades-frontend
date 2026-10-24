@@ -2,6 +2,8 @@
 // src/pages/index.astro
 import Layout from '../layouts/Layout.astro';
 import NewsCard from '../components/NewsCard.astro';
+import SlotCard from '../components/SlotCard.astro';
+import TopBanner from '../components/TopBanner.astro';
 
 import PersonajeCarousel from '../components/PersonajeCarousel.jsx';
 import ActualidadCarousel from '../components/ActualidadCarousel.jsx';
@@ -20,6 +22,9 @@ const BANNERS_PAGE_ID = '106';
 
 // Pon en false cuando todo funcione para ocultar el recuadro rojo de diagnóstico
 const MOSTRAR_DIAGNOSTICO = true;
+
+// Si es true, Actualidad no repite las entradas que salen en las posiciones 6 a 12
+const EXCLUIR_6_A_12_DE_ACTUALIDAD = false;
 
 // ---------------------------------------------------------------------------
 // HELPERS
@@ -163,11 +168,19 @@ console.log('[WP]', {
 // ---------------------------------------------------------------------------
 // PROCESAMIENTO DE ENTRADAS
 // ---------------------------------------------------------------------------
+function fechaCorta(fecha: string): string {
+  const d = new Date(fecha);
+  if (isNaN(d.getTime())) return '';
+  // El texto se genera aquí (no en el navegador) para evitar diferencias de zona horaria
+  return d.toLocaleDateString('es-PE', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 const respaldoFormateado = localPosts.map((p: any) => ({
   id: String(p.id),
   title: p.title,
   slug: p.slug,
   date: p.date,
+  fechaTexto: fechaCorta(p.date),
   excerpt: p.excerpt,
   featuredImage: p.featuredImage,
   videoYoutube: p.videoYoutube || '',
@@ -184,12 +197,13 @@ const respaldoFormateado = localPosts.map((p: any) => ({
   apoyoComunidad: false
 }));
 
-const allPostsFormatted: any[] = !usandoRespaldo
+const allPostsFormatted: any[] = (!usandoRespaldo
   ? wpPosts.map((post: any) => ({
       id: String(post.id),
       title: limpiarHtml(post.title),
       slug: post.slug,
       date: post.date,
+      fechaTexto: fechaCorta(post.date),
       excerpt: limpiarHtml(post.excerpt),
       featuredImage:
         post.featuredImage?.node?.sourceUrl ||
@@ -206,69 +220,8 @@ const allPostsFormatted: any[] = !usandoRespaldo
       esPersonaje: Boolean(post.camposHome?.esPersonaje),
       apoyoComunidad: Boolean(post.camposHome?.apoyoComunidad)
     }))
-  : respaldoFormateado;
-
-// ---------------------------------------------------------------------------
-// DESTACADOS (1 A 5)
-// ---------------------------------------------------------------------------
-const usedPostIds = new Set<string>();
-
-const candidatosDestacados = allPostsFormatted.filter((p: any) => p.destacadoHome === 'destacados');
-
-function obtenerDestacadoPorOrden(orden: number) {
-  const encontrado = candidatosDestacados.find(
-    (p: any) => p.ordenDestacado === orden && !usedPostIds.has(p.id)
-  );
-  if (encontrado) {
-    usedPostIds.add(encontrado.id);
-    return encontrado;
-  }
-  return null;
-}
-
-const slots = [1, 2, 3, 4, 5].map((n) => obtenerDestacadoPorOrden(n));
-
-// Los espacios sin destacado se rellenan con las entradas más recientes que sobren
-const [post1, post2, post3, post4, post5] = slots.map((slot) => {
-  if (slot) return slot;
-  const relleno = allPostsFormatted.find((p: any) => !usedPostIds.has(p.id));
-  if (relleno) {
-    usedPostIds.add(relleno.id);
-    return relleno;
-  }
-  return null;
-});
-
-// ---------------------------------------------------------------------------
-// LISTAS DE CARRUSELES
-// ---------------------------------------------------------------------------
-const personajesList = allPostsFormatted
-  .filter((p: any) => p.esPersonaje)
-  .slice(0, 5)
-  .map((p: any) => ({
-    id: p.id,
-    nombre: p.title,
-    slug: p.slug,
-    foto: p.featuredImage
-  }));
-
-const apoyoComunidadList = allPostsFormatted.filter((p: any) => p.apoyoComunidad).slice(0, 5);
-
-const actualidadPosts = allPostsFormatted
-  .filter((p: any) => !usedPostIds.has(p.id) && !p.esPersonaje)
-  .slice(0, 12);
-
-const socialVideos = allPostsFormatted
-  .filter((p: any) => p.videoYoutube || p.videoTiktok || p.videoInstagram)
-  .slice(0, 6);
-
-const remainingPosts = allPostsFormatted.filter((p: any) => !usedPostIds.has(p.id));
-const post6 = remainingPosts[0] || null;
-const post8 = remainingPosts[1] || null;
-const post9 = remainingPosts[2] || null;
-const post10 = remainingPosts[3] || null;
-const post11 = remainingPosts[4] || null;
-const post12 = remainingPosts[5] || null;
+  : respaldoFormateado
+).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()); // más recientes primero
 
 // ---------------------------------------------------------------------------
 // BANNERS Y LOGOS (ACF Image → .node.sourceUrl)
@@ -288,10 +241,110 @@ const auspiciadoresReales: string[] = [
   bannerData?.logo6?.node?.sourceUrl
 ].filter(Boolean);
 
+// Posición de inserción: el Select puede devolver "Reemplazar Post 4", "post_4", "4", etc.
+// Se toma el número que aparezca (válido de 2 a 12).
+function posicionDeBanner(valor: any, porDefecto: number): number {
+  const m = valorSelect(valor).match(/\d+/);
+  const n = m ? parseInt(m[0]) : porDefecto;
+  return n >= 2 && n <= 12 ? n : porDefecto;
+}
+
+const bannersEnPosicion: Record<number, string> = {};
+if (banner3Src) bannersEnPosicion[posicionDeBanner(bannerData?.banner3Posicion, 4)] = banner3Src;
+if (banner4Src) {
+  const pos4 = posicionDeBanner(bannerData?.banner4Posicion, 7);
+  if (!bannersEnPosicion[pos4]) bannersEnPosicion[pos4] = banner4Src;
+}
+
+// ---------------------------------------------------------------------------
+// REPARTO DE ENTRADAS EN LAS POSICIONES 1 A 12
+// ---------------------------------------------------------------------------
+// Personaje y Apoyo a la Comunidad solo salen en su propio carrusel
+const generales = allPostsFormatted.filter((p: any) => !p.esPersonaje && !p.apoyoComunidad);
+const destacadosMarcados = generales.filter((p: any) => p.destacadoHome === 'destacados');
+const idsDestacadosMarcados = new Set<string>(destacadosMarcados.map((p: any) => p.id));
+
+const usados = new Set<string>();
+const posts: Record<number, any> = {}; // posts[n] = entrada que va en la posición n
+
+// 1) Destacados con su número de orden. Si el orden se repite, gana el más reciente
+//    (generales ya viene ordenado por fecha, el primero que coincide es el más nuevo).
+for (let n = 1; n <= 5; n++) {
+  if (bannersEnPosicion[n]) continue;
+  const candidato = destacadosMarcados.find((p: any) => p.ordenDestacado === n && !usados.has(p.id));
+  if (candidato) {
+    posts[n] = candidato;
+    usados.add(candidato.id);
+  }
+}
+
+// 2) Posiciones 1-5 que quedaron vacías: primero otros destacados, luego las más recientes
+for (let n = 1; n <= 5; n++) {
+  if (bannersEnPosicion[n] || posts[n]) continue;
+  const restantesDestacados = destacadosMarcados
+    .filter((p: any) => !usados.has(p.id))
+    .sort((a: any, b: any) => a.ordenDestacado - b.ordenDestacado);
+  const relleno = restantesDestacados[0] || generales.find((p: any) => !usados.has(p.id));
+  if (relleno) {
+    posts[n] = relleno;
+    usados.add(relleno.id);
+  }
+}
+
+const idsTop5 = new Set<string>(usados);
+
+// 3) Posiciones 6-12: las siguientes más recientes
+for (let n = 6; n <= 12; n++) {
+  if (bannersEnPosicion[n]) continue;
+  const siguiente = generales.find((p: any) => !usados.has(p.id));
+  if (siguiente) {
+    posts[n] = siguiente;
+    usados.add(siguiente.id);
+  }
+}
+
+const slot = (n: number) => ({ banner: bannersEnPosicion[n], post: posts[n] });
+const hayAlgo = (n: number) => Boolean(bannersEnPosicion[n] || posts[n]);
+
+// ---------------------------------------------------------------------------
+// CARRUSELES
+// ---------------------------------------------------------------------------
+const personajesList = allPostsFormatted
+  .filter((p: any) => p.esPersonaje)
+  .slice(0, 10)
+  .map((p: any) => ({ id: p.id, nombre: p.title, slug: p.slug, foto: p.featuredImage }));
+
+const apoyoComunidadList = allPostsFormatted.filter((p: any) => p.apoyoComunidad).slice(0, 10);
+
+// Actualidad: ni destacados, ni personaje, ni apoyo; de lo más reciente a lo más antiguo
+const actualidadPosts = generales
+  .filter((p: any) => !idsDestacadosMarcados.has(p.id) && !idsTop5.has(p.id))
+  .filter((p: any) => !EXCLUIR_6_A_12_DE_ACTUALIDAD || !usados.has(p.id))
+  .slice(0, 12);
+
+// Videos: todas las entradas con enlace de video (aunque sean destacadas), más recientes primero
+const socialVideos = allPostsFormatted
+  .filter((p: any) => p.videoYoutube || p.videoTiktok || p.videoInstagram)
+  .slice(0, 12);
+
+// ---------------------------------------------------------------------------
+// ORDEN VISUAL EN MÓVIL Y TABLET (en escritorio cada elemento va en su columna)
+// Las clases se escriben completas para que Tailwind las detecte.
+// ---------------------------------------------------------------------------
+const ORDEN_A: Record<number, string> = {
+  1: 'order-1', 2: 'order-2', 3: 'order-3', 4: 'order-4', 5: 'order-5'
+};
+const ORDEN_B: Record<number, string> = {
+  6: 'order-1', 7: 'order-2', 8: 'order-3', 9: 'order-5', 10: 'order-6', 11: 'order-7', 12: 'order-8'
+};
+
 const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
 ---
 
 <Layout title="Realidades - Portal de Noticias">
+
+  {/* BANNER 1: se coloca ENCIMA de la cabecera mediante el slot "top-banner" de Layout.astro */}
+  {banner1Src && <TopBanner slot="top-banner" src={banner1Src} sticky={banner1Sticky} />}
 
   {/* ALERTA VISUAL DE DIAGNÓSTICO (se apaga con MOSTRAR_DIAGNOSTICO = false) */}
   {hayDiagnostico && (
@@ -310,76 +363,74 @@ const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
     </div>
   )}
 
-  {/* BANNER 1 SUPERIOR DINÁMICO */}
-  {banner1Src && (
-    <div class={`w-full bg-white flex justify-center py-2 z-40 border-b border-gray-100 ${banner1Sticky ? 'sticky top-16 shadow-md' : ''}`}>
-      <div class="w-[90%] max-w-[1400px] flex justify-center items-center overflow-hidden">
-        <img src={banner1Src} alt="Publicidad" class="w-full h-auto max-h-[120px] object-contain" />
-      </div>
-    </div>
-  )}
-
   <main class="w-[90%] max-w-[1400px] mx-auto my-6 font-sans">
 
-    {/* MALLA PRINCIPAL DE 3 COLUMNAS */}
-    <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+    {/*
+      BLOQUE A: posts 1-5 + Personaje + Actualidad + Apoyo.
+      - Móvil (<590px): 1 columna, en el orden de las clases order-*.
+      - Tablet (590-1024px): 2 columnas.
+      - Escritorio (>1024px): 3 columnas. Cada columna es un flex vertical, así Actualidad
+        queda pegada al Post 1 y no hay huecos.
+      Las columnas usan "contents" en móvil/tablet para que sus hijos se ordenen todos juntos.
+    */}
+    <div class="grid grid-cols-1 min-[590px]:grid-cols-2 lg:grid-cols-12 gap-6 items-start">
 
-      {/* Columna Izquierda (25%) */}
-      <div class="md:col-span-3 flex flex-col gap-6">
-        {post2 && <NewsCard {...post2} />}
-        {post3 && <NewsCard {...post3} />}
+      {/* Columna izquierda (25%): Post 2, Post 3, El Personaje */}
+      <div class="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-3">
+        {[2, 3].map((n) => hayAlgo(n) && (
+          <div class={ORDEN_A[n]}><SlotCard {...slot(n)} /></div>
+        ))}
+        {personajesList.length > 0 && (
+          <div class="order-6"><PersonajeCarousel personajes={personajesList} client:visible /></div>
+        )}
       </div>
 
-      {/* Columna Central (50%) */}
-      <div class="md:col-span-6 flex flex-col gap-6">
-        {post1 && (
-          <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-            <a href={`/${post1.slug}`} class="block group">
-              <div class="relative h-72 md:h-96 w-full overflow-hidden bg-gray-100">
-                <img src={post1.featuredImage} alt={post1.title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                {post1.videoYoutube && (
-                  <span class="absolute bottom-3 left-3 bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow">
-                    ▶ Ver video
+      {/* Columna central (50%): Post 1 y Actualidad */}
+      <div class="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-6">
+        {posts[1] && (
+          <article class="order-1 min-[590px]:col-span-2 lg:col-span-1">
+            <a href={`/${posts[1].slug}`} class="group block">
+              <h1 class="text-center text-2xl md:text-3xl font-extrabold text-gray-900 leading-tight mb-4 group-hover:text-blue-700 transition-colors">
+                {posts[1].title}
+              </h1>
+              <div class="relative w-full aspect-[16/10] overflow-hidden rounded-xl bg-gray-100">
+                <img src={posts[1].featuredImage} alt={posts[1].title} class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                {posts[1].videoYoutube && (
+                  <span class="absolute bottom-4 left-4 inline-flex items-center gap-2 bg-black/70 text-white px-3 py-1.5 rounded-full text-sm font-medium">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                    Ver video
                   </span>
                 )}
               </div>
-              <div class="p-5">
-                {post1.insignia && <span class="text-xs font-bold uppercase text-emerald-600 bg-emerald-50 px-2 py-1 rounded">{post1.insignia}</span>}
-                <h1 class="text-xl md:text-2xl font-bold text-gray-900 mt-2 group-hover:text-red-600 transition-colors leading-tight">
-                  {post1.title}
-                </h1>
-                <p class="text-gray-600 text-sm mt-2 line-clamp-3">{post1.excerpt}</p>
-              </div>
             </a>
+            <div class="mt-4">
+              {posts[1].insignia && (
+                <span class="mr-2 text-xs font-bold uppercase text-emerald-700 bg-emerald-50 px-2 py-1 rounded">{posts[1].insignia}</span>
+              )}
+              {posts[1].actoresSociales?.[0] && (
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-gray-100 text-gray-700 border-gray-200">{posts[1].actoresSociales[0]}</span>
+              )}
+              <p class="mt-3 text-gray-700 text-base leading-relaxed line-clamp-4">{posts[1].excerpt}</p>
+            </div>
+          </article>
+        )}
+        {actualidadPosts.length > 0 && (
+          <div class="order-7 min-[590px]:order-8 min-[590px]:col-span-2 lg:col-span-1">
+            <ActualidadCarousel posts={actualidadPosts} client:visible />
           </div>
         )}
       </div>
 
-      {/* Columna Derecha (25%): el Banner 3 reemplaza al post4 si está cargado */}
-      <div class="md:col-span-3 flex flex-col gap-6">
-        {banner3Src ? (
-          <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 border border-gray-100">
-            <img src={banner3Src} alt="Publicidad" class="w-full h-auto object-contain" />
-          </div>
-        ) : (
-          post4 && <NewsCard {...post4} />
+      {/* Columna derecha (25%): Post 4 (o Banner), Post 5, Apoyo a la Comunidad */}
+      <div class="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-3">
+        {[4, 5].map((n) => hayAlgo(n) && (
+          <div class={ORDEN_A[n]}><SlotCard {...slot(n)} /></div>
+        ))}
+        {apoyoComunidadList.length > 0 && (
+          <div class="order-8 min-[590px]:order-7"><ApoyoComunidadCarousel posts={apoyoComunidadList} client:visible /></div>
         )}
-        {post5 && <NewsCard {...post5} />}
       </div>
 
-    </div>
-
-    {/* TRÍPTICO INTERMEDIO */}
-    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 my-8 items-start">
-      <div class="md:col-span-3">
-        <PersonajeCarousel personajes={personajesList} client:visible />
-      </div>
-      <div class="md:col-span-6">
-        <ActualidadCarousel posts={actualidadPosts} client:visible />
-      </div>
-      <div class="md:col-span-3">
-        <ApoyoComunidadCarousel posts={apoyoComunidadList} client:visible />
-      </div>
     </div>
 
     {/* BANNER 2 ANCHO COMPLETO */}
@@ -389,29 +440,36 @@ const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
       </div>
     )}
 
-    {/* GRID INFERIOR */}
-    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 my-8">
-      <div class="md:col-span-3 flex flex-col gap-6">
-        {/* Banner 4 (336x300): solo se muestra si está cargado en WordPress */}
-        {banner4Src && (
-          <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 border border-gray-100">
-            <img src={banner4Src} alt="Publicidad" class="w-full h-auto object-contain" />
+    {/*
+      BLOQUE B: posts 6-12 + Videos.
+      Escritorio: izquierda = 7, 8, 9 | centro = 6 + Videos | derecha = 10, 11, 12
+      Móvil: 6 → 7 → 8 → Videos → 9 → 10 → 11 → 12
+    */}
+    <div class="grid grid-cols-1 min-[590px]:grid-cols-2 lg:grid-cols-12 gap-6 my-8 items-start">
+
+      <div class="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-3">
+        {[7, 8, 9].map((n) => hayAlgo(n) && (
+          <div class={ORDEN_B[n]}><SlotCard {...slot(n)} /></div>
+        ))}
+      </div>
+
+      <div class="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-6">
+        {hayAlgo(6) && (
+          <div class={`${ORDEN_B[6]} min-[590px]:col-span-2 lg:col-span-1`}><SlotCard {...slot(6)} /></div>
+        )}
+        {socialVideos.length > 0 && (
+          <div class="order-4 min-[590px]:col-span-2 lg:col-span-1">
+            <SocialVideoCarousel videos={socialVideos} client:visible />
           </div>
         )}
-        {post8 && <NewsCard {...post8} />}
-        {post9 && <NewsCard {...post9} />}
       </div>
 
-      <div class="md:col-span-6 flex flex-col gap-6">
-        {post6 && <NewsCard {...post6} />}
-        <SocialVideoCarousel videos={socialVideos} client:visible />
+      <div class="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-3">
+        {[10, 11, 12].map((n) => hayAlgo(n) && (
+          <div class={ORDEN_B[n]}><SlotCard {...slot(n)} /></div>
+        ))}
       </div>
 
-      <div class="md:col-span-3 flex flex-col gap-6">
-        {post10 && <NewsCard {...post10} />}
-        {post11 && <NewsCard {...post11} />}
-        {post12 && <NewsCard {...post12} />}
-      </div>
     </div>
 
     {/* AUSPICIADORES */}
