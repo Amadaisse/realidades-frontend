@@ -48,6 +48,9 @@ const { title = 'Realidades - Noticias', description = 'Portal de noticias sobre
     </head>
     <body class="bg-gray-50 flex flex-col min-h-screen">
         
+        {/* Banner 1: se muestra ENCIMA de la cabecera (lo envía index.astro con slot="top-banner") */}
+        <slot name="top-banner" />
+
         <Header />
 
         <div class="flex-grow">

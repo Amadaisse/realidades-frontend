@@ -1,61 +1,41 @@
 // src/components/PersonajeCarousel.jsx
 import React, { useState } from 'react';
+import CarouselArrows from './CarouselArrows.jsx';
 
 export default function PersonajeCarousel({ personajes = [] }) {
-  const [currentIndex, setCurrentIndex] = useState(0);
-
+  const [i, setI] = useState(0);
   if (!personajes || personajes.length === 0) return null;
 
-  const handlePrev = () => {
-    setCurrentIndex((prev) => (prev === 0 ? personajes.length - 1 : prev - 1));
-  };
-
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev === personajes.length - 1 ? 0 : prev + 1));
-  };
-
-  const personaje = personajes[currentIndex];
+  const p = personajes[i];
+  const total = personajes.length;
 
   return (
-    <div className="bg-slate-100 border border-slate-200 p-4 rounded-xl relative shadow-sm text-center">
-      <h3 className="text-xs font-bold uppercase tracking-wider text-red-600 mb-3 text-left">
-        El Personaje
-      </h3>
+    <section className="bg-white rounded-xl flex flex-col lg:h-[560px]">
+      <h2 className="text-blue-700 text-xl font-medium pb-2 mb-4 border-b border-gray-200">El Personaje</h2>
 
-      <a href={`/${personaje.slug}`} className="group block">
-        <div className="w-full aspect-square max-w-[220px] mx-auto overflow-hidden rounded-lg mb-3 shadow-md bg-slate-200">
+      <a href={`/${p.slug}`} className="group block">
+        <div className="aspect-square w-full overflow-hidden rounded-xl bg-gray-100">
           <img
-            src={personaje.foto}
-            alt={personaje.nombre}
+            src={p.foto}
+            alt={p.nombre}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />
         </div>
-        <h4 className="font-bold text-sm text-slate-900 group-hover:text-red-600 transition-colors line-clamp-2">
-          {personaje.nombre}
-        </h4>
+        <h3 className="mt-3 text-base font-semibold text-gray-900 leading-snug line-clamp-3 group-hover:text-blue-700 transition-colors">
+          {p.nombre}
+        </h3>
       </a>
 
-      {personajes.length > 1 && (
-        <div className="flex justify-between items-center mt-3 px-2">
-          <button
-            onClick={handlePrev}
-            className="p-1.5 bg-white rounded-full shadow text-xs hover:bg-slate-200 transition"
-            aria-label="Anterior personaje"
-          >
-            ◀
-          </button>
-          <span className="text-[10px] text-slate-500 font-medium">
-            {currentIndex + 1} / {personajes.length}
-          </span>
-          <button
-            onClick={handleNext}
-            className="p-1.5 bg-white rounded-full shadow text-xs hover:bg-slate-200 transition"
-            aria-label="Siguiente personaje"
-          >
-            ▶
-          </button>
+      {total > 1 && (
+        <div className="mt-auto pt-3">
+          <CarouselArrows
+            onPrev={() => setI((n) => Math.max(0, n - 1))}
+            onNext={() => setI((n) => Math.min(total - 1, n + 1))}
+            canPrev={i > 0}
+            canNext={i < total - 1}
+          />
         </div>
       )}
-    </div>
+    </section>
   );
 }

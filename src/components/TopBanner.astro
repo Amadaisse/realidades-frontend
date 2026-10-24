@@ -1,0 +1,62 @@
+---
+// src/components/TopBanner.astro
+// Banner 1: va ENCIMA de la cabecera, con botón (X) para cerrarlo.
+// Si es sticky, queda fijo arriba y la cabecera se pega justo debajo (variable CSS --top-banner-h).
+interface Props {
+  src: string;
+  sticky?: boolean;
+}
+const { src, sticky = false } = Astro.props;
+---
+
+<div
+  id="top-banner"
+  data-sticky={sticky ? 'true' : 'false'}
+  class={`w-full bg-black z-[60] ${sticky ? 'sticky top-0' : 'relative'}`}
+>
+  <div class="relative mx-auto max-w-[1400px] flex justify-center">
+    <img src={src} alt="Publicidad" class="w-full h-auto max-h-[130px] object-contain" />
+    <button
+      id="top-banner-close"
+      type="button"
+      aria-label="Cerrar publicidad"
+      class="absolute top-1 right-1 w-6 h-6 flex items-center justify-center rounded-full bg-black/70 text-white text-sm leading-none hover:bg-black"
+    >
+      ✕
+    </button>
+  </div>
+</div>
+
+<script>
+  const banner = document.getElementById('top-banner');
+  const key = 'realidades-top-banner-cerrado';
+  const root = document.documentElement;
+
+  // Alto que debe dejar libre la cabecera cuando el banner está fijo
+  const actualizarAlto = () => {
+    const fijo = banner && banner.dataset.sticky === 'true' && document.body.contains(banner);
+    root.style.setProperty('--top-banner-h', fijo ? `${banner!.offsetHeight}px` : '0px');
+  };
+
+  const cerrar = () => {
+    banner?.remove();
+    actualizarAlto();
+  };
+
+  try {
+    if (sessionStorage.getItem(key)) cerrar();
+  } catch {}
+
+  if (banner && document.body.contains(banner)) {
+    actualizarAlto();
+    new ResizeObserver(actualizarAlto).observe(banner);
+    banner.querySelector('img')?.addEventListener('load', actualizarAlto);
+  }
+
+  document.getElementById('top-banner-close')?.addEventListener('click', () => {
+    cerrar();
+    try {
+      sessionStorage.setItem(key, '1');
+    } catch {}
+  });
+</script>

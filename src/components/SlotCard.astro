@@ -1,0 +1,19 @@
+---
+// src/components/SlotCard.astro
+// Una "posición" de la grilla: muestra un banner (si reemplaza esa posición) o la tarjeta del post.
+import NewsCard from './NewsCard.astro';
+
+interface Props {
+  banner?: string;
+  post?: any;
+}
+const { banner, post } = Astro.props;
+---
+
+{banner ? (
+  <div class="rounded-xl overflow-hidden shadow-sm bg-gray-50 border border-gray-100">
+    <img src={banner} alt="Publicidad" class="w-full h-auto object-contain" loading="lazy" />
+  </div>
+) : (
+  post && <NewsCard {...post} />
+)}
