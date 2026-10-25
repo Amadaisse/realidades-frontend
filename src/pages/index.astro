@@ -241,6 +241,17 @@ const auspiciadoresReales: string[] = [
   bannerData?.logo6?.node?.sourceUrl
 ].filter(Boolean);
 
+// Resumen de lo que llegó desde WordPress (se ve en el recuadro rojo mientras MOSTRAR_DIAGNOSTICO = true)
+diagnostico.push(
+  `BANNERS recibidos → banner1: ${banner1Src ? 'sí' : 'NO'} | banner2: ${banner2Src ? 'sí' : 'NO'} | ` +
+  `banner3: ${banner3Src ? 'sí' : 'NO'} (posición: ${JSON.stringify(bannerData?.banner3Posicion ?? null)}) | ` +
+  `banner4: ${banner4Src ? 'sí' : 'NO'} (posición: ${JSON.stringify(bannerData?.banner4Posicion ?? null)}) | ` +
+  `logos: ${auspiciadoresReales.length} de 6`
+);
+if (!banner3Src || !banner4Src || auspiciadoresReales.length < 6) {
+  diagnostico.push('DATOS CRUDOS de bannersGlobales: ' + JSON.stringify(bannerData ?? null).slice(0, 1500));
+}
+
 // Posición de inserción: el Select puede devolver "Reemplazar Post 4", "post_4", "4", etc.
 // Se toma el número que aparezca (válido de 2 a 12).
 function posicionDeBanner(valor: any, porDefecto: number): number {
@@ -293,10 +304,14 @@ for (let n = 1; n <= 5; n++) {
 
 const idsTop5 = new Set<string>(usados);
 
-// 3) Posiciones 6-12: las siguientes más recientes
+// 3) Posiciones 6-12. Primero los destacados que quedaron fuera de 1-5 (por ejemplo, porque un banner
+//    ocupó su posición): "pasan a las siguientes posiciones". Después, las más recientes.
 for (let n = 6; n <= 12; n++) {
   if (bannersEnPosicion[n]) continue;
-  const siguiente = generales.find((p: any) => !usados.has(p.id));
+  const desplazado = destacadosMarcados
+    .filter((p: any) => !usados.has(p.id))
+    .sort((a: any, b: any) => a.ordenDestacado - b.ordenDestacado)[0];
+  const siguiente = desplazado || generales.find((p: any) => !usados.has(p.id));
   if (siguiente) {
     posts[n] = siguiente;
     usados.add(siguiente.id);
@@ -373,7 +388,7 @@ const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
         queda pegada al Post 1 y no hay huecos.
       Las columnas usan "contents" en móvil/tablet para que sus hijos se ordenen todos juntos.
     */}
-    <div class="grid grid-cols-1 min-[590px]:grid-cols-2 lg:grid-cols-12 gap-6 items-start">
+    <div class="grid grid-cols-1 min-[590px]:grid-cols-2 lg:grid-cols-12 gap-6 items-start lg:items-stretch">
 
       {/* Columna izquierda (25%): Post 2, Post 3, El Personaje */}
       <div class="contents lg:flex lg:flex-col lg:gap-6 lg:col-span-3">
@@ -381,7 +396,7 @@ const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
           <div class={ORDEN_A[n]}><SlotCard {...slot(n)} /></div>
         ))}
         {personajesList.length > 0 && (
-          <div class="order-6"><PersonajeCarousel personajes={personajesList} client:visible /></div>
+          <div class="order-6 lg:flex-1 lg:flex lg:flex-col"><PersonajeCarousel personajes={personajesList} client:visible /></div>
         )}
       </div>
 
@@ -415,7 +430,7 @@ const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
           </article>
         )}
         {actualidadPosts.length > 0 && (
-          <div class="order-7 min-[590px]:order-8 min-[590px]:col-span-2 lg:col-span-1">
+          <div class="order-7 min-[590px]:order-8 min-[590px]:col-span-2 lg:col-span-1 lg:flex-1 lg:flex lg:flex-col">
             <ActualidadCarousel posts={actualidadPosts} client:visible />
           </div>
         )}
@@ -427,7 +442,7 @@ const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
           <div class={ORDEN_A[n]}><SlotCard {...slot(n)} /></div>
         ))}
         {apoyoComunidadList.length > 0 && (
-          <div class="order-8 min-[590px]:order-7"><ApoyoComunidadCarousel posts={apoyoComunidadList} client:visible /></div>
+          <div class="order-8 min-[590px]:order-7 lg:flex-1 lg:flex lg:flex-col"><ApoyoComunidadCarousel posts={apoyoComunidadList} client:visible /></div>
         )}
       </div>
 
