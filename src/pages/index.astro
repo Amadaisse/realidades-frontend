@@ -21,7 +21,7 @@ const apiUrl = import.meta.env.WORDPRESS_API_URL || 'https://realidades.lastorre
 const BANNERS_PAGE_ID = '106';
 
 // Pon en false cuando todo funcione para ocultar el recuadro rojo de diagnóstico
-const MOSTRAR_DIAGNOSTICO = true;
+const MOSTRAR_DIAGNOSTICO = false;
 
 // Si es true, Actualidad no repite las entradas que salen en las posiciones 6 a 12
 const EXCLUIR_6_A_12_DE_ACTUALIDAD = false;
@@ -495,9 +495,7 @@ const hayDiagnostico = MOSTRAR_DIAGNOSTICO && diagnostico.length > 0;
         </h3>
         <div class="flex flex-wrap justify-center items-center gap-8">
           {auspiciadoresReales.map((logoUrl) => (
-            <div class="h-16 max-w-[180px] flex items-center justify-center p-2">
-              <img src={logoUrl} alt="Auspiciador" class="max-h-full max-w-full object-contain hover:scale-105 transition-all duration-300" />
-            </div>
+            <img src={logoUrl} alt="Auspiciador" class="h-24 w-auto max-w-full object-contain hover:scale-105 transition-transform duration-300" />
           ))}
         </div>
       </div>
